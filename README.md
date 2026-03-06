@@ -6,8 +6,6 @@
 
 
 ## The Team
-`
-SHARATH
-ROSHAN
-KEERTHANA
-`
+` SHARATH `
+` ROSHAN `
+` KEERTHANA `
