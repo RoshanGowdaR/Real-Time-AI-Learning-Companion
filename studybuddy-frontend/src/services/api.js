@@ -1,4 +1,13 @@
-const BASE_URL = "http://localhost:8001"
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+
+async function parseError(res, fallbackMessage) {
+  try {
+    const data = await res.json()
+    return new Error(data.detail || data.error || fallbackMessage)
+  } catch {
+    return new Error(fallbackMessage)
+  }
+}
 
 export const api = {
   registerStudent: async (name, email) => {
@@ -7,13 +16,23 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email }),
     })
-    if (!res.ok) throw new Error("Registration failed")
+    if (!res.ok) throw await parseError(res, "Registration failed")
+    return res.json()
+  },
+
+  loginStudent: async (email) => {
+    const res = await fetch(`${BASE_URL}/api/student/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) throw await parseError(res, "Login failed")
     return res.json()
   },
 
   getMemory: async (student_id) => {
     const res = await fetch(`${BASE_URL}/api/memory/${student_id}`)
-    if (!res.ok) throw new Error("Failed to fetch memory")
+    if (!res.ok) throw await parseError(res, "Failed to fetch memory")
     return res.json()
   },
 
@@ -25,13 +44,13 @@ export const api = {
       method: "POST",
       body: formData,
     })
-    if (!res.ok) throw new Error("Upload failed")
+    if (!res.ok) throw await parseError(res, "Upload failed")
     return res.json()
   },
 
   getDocuments: async (student_id) => {
     const res = await fetch(`${BASE_URL}/api/documents/${student_id}`)
-    if (!res.ok) throw new Error("Failed to fetch documents")
+    if (!res.ok) throw await parseError(res, "Failed to fetch documents")
     return res.json()
   },
 
@@ -41,7 +60,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ student_id, document_id, filename }),
     })
-    if (!res.ok) throw new Error("Notes generation failed")
+    if (!res.ok) throw await parseError(res, "Notes generation failed")
     return res.json()
   },
 
@@ -51,7 +70,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ student_id, question }),
     })
-    if (!res.ok) throw new Error("Chat query failed")
+    if (!res.ok) throw await parseError(res, "Chat query failed")
     return res.json()
   },
 
@@ -62,7 +81,7 @@ export const api = {
       method: "POST",
       body: formData,
     })
-    if (!res.ok) throw new Error("STT failed")
+    if (!res.ok) throw await parseError(res, "STT failed")
     return res.json()
   },
 
@@ -72,7 +91,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     })
-    if (!res.ok) throw new Error("TTS failed")
+    if (!res.ok) throw await parseError(res, "TTS failed")
     const blob = await res.blob()
     return URL.createObjectURL(blob)
   },
@@ -83,7 +102,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ student_id, topics_covered, goals, duration_mins }),
     })
-    if (!res.ok) throw new Error("Session save failed")
+    if (!res.ok) throw await parseError(res, "Session save failed")
     return res.json()
   }
 }

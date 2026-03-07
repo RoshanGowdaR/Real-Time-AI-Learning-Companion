@@ -37,3 +37,7 @@ class SessionRequest(BaseModel):
 class StudentRequest(BaseModel):
     name: str
     email: str
+
+
+class StudentLoginRequest(BaseModel):
+    email: str

@@ -18,6 +18,12 @@ def get_student(student_id: str):
     return result.data
 
 
+def get_student_by_email(email: str):
+    """Fetch student by email, return row"""
+    result = supabase.table("students").select("*").eq("email", email).single().execute()
+    return result.data
+
+
 def save_document(student_id: str, filename: str, summary: str):
     """Insert into documents table, return row"""
     result = (

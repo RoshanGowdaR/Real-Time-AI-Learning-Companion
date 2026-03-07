@@ -9,9 +9,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/app" element={<MainApp />} />
-        {/* Simple redirect if already has ID */}
+        <Route path="/" element={isRegistered ? <Navigate to="/app" replace /> : <Landing />} />
+        <Route path="/app" element={isRegistered ? <MainApp /> : <Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

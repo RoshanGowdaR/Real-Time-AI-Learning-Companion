@@ -1,25 +1,56 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
+import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Landing() {
+  const [mode, setMode] = useState('signup')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
-  const handleStart = async (e) => {
+  const finishAuth = (res) => {
+    localStorage.setItem('student_id', res.student_id)
+    localStorage.setItem('student_name', res.name)
+    navigate('/app')
+  }
+
+  const handleAuth = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+
+    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedName = name.trim()
+
     try {
-      const res = await api.registerStudent(name, email)
-      localStorage.setItem('student_id', res.student_id)
-      localStorage.setItem('student_name', res.name)
-      navigate('/app')
+      let res
+      if (mode === 'signup') {
+        try {
+          res = await api.registerStudent(normalizedName, normalizedEmail)
+        } catch (signupErr) {
+          const message = (signupErr?.message || '').toLowerCase()
+          const accountExists =
+            message.includes('already registered') ||
+            message.includes('already exist') ||
+            message.includes('duplicate') ||
+            message.includes('unique')
+
+          if (!accountExists) throw signupErr
+
+          // Existing account path: switch UI mode and sign in directly.
+          setMode('login')
+          res = await api.loginStudent(normalizedEmail)
+        }
+      } else {
+        res = await api.loginStudent(normalizedEmail)
+      }
+
+      finishAuth(res)
     } catch (err) {
-      setError('Registration failed. Please try again.')
+      setError(err.message || 'Authentication failed. Please try again.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -27,49 +58,81 @@ export default function Landing() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-gray-800 rounded-3xl p-10 shadow-2xl border border-gray-700 fade-in">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-600/20">
-            <span className="text-3xl font-bold text-white">SB</span>
+    <div className="relative min-h-screen bg-[#0a0a0f] flex items-center justify-center p-4 overflow-hidden">
+      <div className="absolute inset-0 bg-grid-pattern opacity-40" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.15),transparent_45%)]" />
+
+      <div className="relative w-96 max-w-full bg-[#111118] rounded-2xl p-10 shadow-[0_30px_80px_rgba(0,0,0,0.6)] border border-[#1e1e2e]">
+        <div className="text-center">
+          <div className="mx-auto h-11 w-11 rounded-lg border border-[#2c2d42] bg-[#171827] grid place-items-center">
+            <div className="h-4 w-4 rounded-sm bg-indigo-500" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">StudyBuddy</h1>
-          <p className="text-gray-400">Your AI-powered study companion</p>
+          <h1 className="mt-4 text-3xl font-bold text-white">StudyBuddy</h1>
+          <p className="mt-1 text-sm text-gray-400">Focused study space with AI guidance</p>
         </div>
 
-        <form onSubmit={handleStart} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Full Name</label>
+        <div className="mt-6 p-1 bg-[#0f1018] rounded-xl border border-[#1e1e2e] grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('signup')
+              setError('')
+            }}
+            className={`rounded-lg py-2 text-sm font-medium transition-all ${mode === 'signup' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+          >
+            Sign Up
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('login')
+              setError('')
+            }}
+            className={`rounded-lg py-2 text-sm font-medium transition-all ${mode === 'login' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+          >
+            Login
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-gray-500 text-center">
+          New here? Create account. Returning? Login with email.
+        </p>
+
+        <form onSubmit={handleAuth} className="mt-4">
+          {mode === 'signup' && (
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-colors"
-              placeholder="e.g. Sharath"
+              className="w-full bg-[#171827] border border-[#2c2d42] text-white rounded-xl px-4 py-3 mt-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500"
+              placeholder="Full name"
             />
-          </div>
+          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-colors"
-              placeholder="sharath@example.com"
-            />
-          </div>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-[#171827] border border-[#2c2d42] text-white rounded-xl px-4 py-3 mt-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500"
+            placeholder="Email address"
+          />
 
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-4 rounded-xl transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-primary-600/30"
+            className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl py-3 transition-all duration-200 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            {loading ? 'Setting up...' : 'Start Learning'}
+            {loading ? (
+              <span className="inline-flex items-center gap-2 justify-center">
+                <LoadingSpinner />
+                <span>{mode === 'signup' ? 'Creating account...' : 'Logging in...'}</span>
+              </span>
+            ) : (
+              mode === 'signup' ? 'Create Account' : 'Continue to Study'
+            )}
           </button>
         </form>
       </div>

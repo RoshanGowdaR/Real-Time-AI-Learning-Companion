@@ -1,19 +1,45 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { api } from '../services/api'
 
+function SenseiIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="8.4" r="3.3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M7.2 8.4h9.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M9.1 11.5h5.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M5.4 18.8c1.8-2.4 4-3.6 6.6-3.6 2.6 0 4.8 1.2 6.6 3.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M15.8 7.1l2.1 0.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function MicIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="9" y="4" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 11a6 6 0 0 0 12 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M12 17v3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M9 20h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SpeakerIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M4 10h4l5-4v12l-5-4H4z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M17 9a4 4 0 0 1 0 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M19.5 7a7 7 0 0 1 0 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function VoiceOrb({ studentId, onResult, speakText }) {
   const [isRecording, setIsRecording] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const mediaRecorder = useRef(null)
   const chunks = useRef([])
   const audioPlayer = useRef(new Audio())
-
-  // Handle speakText prop changes
-  useEffect(() => {
-    if (speakText) {
-      handleTTS(speakText)
-    }
-  }, [speakText])
 
   const handleTTS = async (text) => {
     if (!text) return
@@ -28,6 +54,19 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
       setIsSpeaking(false)
     }
   }
+
+  // Handle speakText prop changes
+  useEffect(() => {
+    if (!speakText) return
+
+    const timerId = window.setTimeout(() => {
+      handleTTS(speakText)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [speakText])
 
   const toggleRecording = async () => {
     if (isRecording) {
@@ -69,28 +108,43 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
     }
   }
 
+  const orbToneClass = isRecording
+    ? 'sensei-orb-listening bg-[#102849] border-sky-300/70'
+    : isSpeaking
+      ? 'sensei-orb-speaking bg-[#123830] border-emerald-300/70'
+      : 'sensei-orb-idle bg-[#1a2940] border-[#4a5f85]'
+
   return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50">
+    <div className="fixed bottom-4 right-4 md:right-auto md:bottom-8 md:left-[17rem] z-40">
       <button
+        type="button"
         onClick={toggleRecording}
-        className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl relative
-          ${isRecording ? 'bg-blue-500 shadow-blue-500/50 scale-110' : 
-            isSpeaking ? 'bg-green-500 shadow-green-500/50 scale-105' : 
-            'bg-gray-800 border-4 border-gray-700 shadow-black/50'}
-        `}
+        title="Talk with Sensei"
+        className={`group relative h-[76px] w-[76px] rounded-full border-2 flex items-center justify-center shadow-[0_18px_45px_rgba(2,6,23,0.58)] transition-all duration-300 cursor-pointer ${orbToneClass}`}
       >
-        {/* Animated Orbits */}
+        <span className="absolute inset-[3px] rounded-full bg-gradient-to-b from-white/16 to-transparent pointer-events-none" />
+        <span className="absolute inset-[8px] rounded-full border border-white/16 pointer-events-none" />
+
         {(isRecording || isSpeaking) && (
-          <div className={`absolute inset-0 rounded-full animate-ping opacity-30 ${isRecording ? 'bg-blue-400' : 'bg-green-400'}`}></div>
+          <span
+            className={`absolute -inset-2 rounded-full border animate-pulse ${
+              isRecording ? 'border-sky-300/45' : 'border-emerald-300/45'
+            }`}
+          />
         )}
-        
-        <div className="relative z-10 flex flex-col items-center">
-          <span className="text-3xl">
-            {isRecording ? '🎙️' : isSpeaking ? '🔊' : '🤖'}
-          </span>
-          <span className="text-[10px] font-bold uppercase tracking-widest mt-1">
-            {isRecording ? 'Listening' : isSpeaking ? 'Sensei' : 'Sensei'}
-          </span>
+
+        {!isRecording && !isSpeaking && (
+          <span className="absolute -inset-1 rounded-full border border-indigo-300/25 sensei-ring-idle" />
+        )}
+
+        <div className="relative z-10 h-8 w-8 text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
+          {isSpeaking ? (
+            <SpeakerIcon className="h-full w-full" />
+          ) : isRecording ? (
+            <MicIcon className="h-full w-full" />
+          ) : (
+            <SenseiIcon className="h-full w-full" />
+          )}
         </div>
       </button>
     </div>
