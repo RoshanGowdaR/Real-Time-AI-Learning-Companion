@@ -1,0 +1,13 @@
+.venv
+venv
+__pycache__
+*.pyc
+.env
+*.egg-info
+dist/
+build/
+uploads/*
+!uploads/.gitkeep
+vectorstore/*
+!vectorstore/.gitkeep
+test_output.mp3

@@ -1,10 +1,25 @@
 """StudyBuddy FastAPI REST API"""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from routes import student, upload, chat, notes, voice, memory
 
 app = FastAPI(title="StudyBuddy API")
+
+
+@app.on_event("startup")
+def startup():
+    print("✅ StudyBuddy REST API is running")
+    print("✅ All routes loaded")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"error": str(exc), "status": "error"},
+    )
 
 app.add_middleware(
     CORSMiddleware,
