@@ -47,6 +47,24 @@ def answer_question(question: str, context: str) -> str:
     return response.content
 
 
+def search_and_synthesize(query: str, search_type: str) -> str:
+    """Simulate web/research search and synthesize into notes via LLM."""
+    type_label = "Deep Academic Research" if search_type == "research" else "Web Search"
+    system = (
+        f"You are StudyBuddy — an expert researcher. Use your knowledge to simulate a {type_label} result.\n"
+        "Convert your simulated findings into well-structured study notes using:\n"
+        "- Clear section headings\n"
+        "- Bullet points for key concepts\n"
+        "- Key terms in **bold**\n"
+        "- A 2-3 sentence summary at the end.\n"
+        "Focus on providing high-quality, accurate educational content."
+    )
+    user_msg = f"Simulate a {search_type} for: {query}"
+    messages = [("system", system), ("human", user_msg)]
+    response = llm.invoke(messages)
+    return response.content
+
+
 def generate_greeting(student_name: str, recent_sessions: list) -> str:
     """Generate a warm, personalized greeting for the student."""
     has_sessions = len(recent_sessions) > 0

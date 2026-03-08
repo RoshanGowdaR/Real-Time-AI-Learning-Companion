@@ -17,13 +17,19 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 
-def process_pdf(file_path: str, student_id: str) -> str:
-    """Extract text from PDF, chunk, save FAISS index, return first 300 chars as summary."""
+def extract_pdf_text(file_path: str) -> str:
+    """Extract plain text from a PDF file."""
     doc = fitz.open(file_path)
     text = ""
     for page in doc:
         text += page.get_text()
     doc.close()
+    return text.strip()
+
+
+def process_pdf(file_path: str, student_id: str) -> str:
+    """Extract text from PDF, chunk, save FAISS index, return first 300 chars as summary."""
+    text = extract_pdf_text(file_path)
 
     if not text.strip():
         return ""
@@ -48,6 +54,37 @@ def process_pdf(file_path: str, student_id: str) -> str:
 
     vectorstore.save_local(str(student_dir))
     return summary
+
+
+def rebuild_student_index(student_id: str, file_paths: list[str]) -> None:
+    """Rebuild a student's FAISS index from remaining PDF files."""
+    student_dir = VECTORSTORE_DIR / student_id
+    student_dir.mkdir(parents=True, exist_ok=True)
+
+    documents = []
+    for raw_path in file_paths:
+        file_path = Path(raw_path)
+        if not file_path.exists():
+            continue
+
+        text = extract_pdf_text(str(file_path))
+        if not text:
+            continue
+
+        documents.extend(text_splitter.create_documents([text]))
+
+    index_file = student_dir / "index.faiss"
+    pickle_file = student_dir / "index.pkl"
+
+    if not documents:
+        if index_file.exists():
+            index_file.unlink()
+        if pickle_file.exists():
+            pickle_file.unlink()
+        return
+
+    vectorstore = FAISS.from_documents(documents, embeddings)
+    vectorstore.save_local(str(student_dir))
 
 
 def query_rag(question: str, student_id: str) -> str:

@@ -1,18 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { api } from '../services/api'
 
-function SenseiIcon({ className }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <circle cx="12" cy="8.4" r="3.3" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M7.2 8.4h9.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M9.1 11.5h5.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M5.4 18.8c1.8-2.4 4-3.6 6.6-3.6 2.6 0 4.8 1.2 6.6 3.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M15.8 7.1l2.1 0.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function MicIcon({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -98,8 +86,8 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
       const { text } = await api.speechToText(blob)
       if (text) {
         // Step 2: Chat
-        const { answer } = await api.chatQuery(studentId, text)
-        onResult({ question: text, answer })
+        const { answer, chat_id } = await api.chatQuery(studentId, text, 'voice')
+        onResult({ question: text, answer, chatId: chat_id })
         // Step 3: Speak back
         handleTTS(answer)
       }
@@ -108,44 +96,43 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
     }
   }
 
-  const orbToneClass = isRecording
-    ? 'sensei-orb-listening bg-[#102849] border-sky-300/70'
+  const waveformStateClass = isRecording
+    ? 'voice-wave--recording'
     : isSpeaking
-      ? 'sensei-orb-speaking bg-[#123830] border-emerald-300/70'
-      : 'sensei-orb-idle bg-[#1a2940] border-[#4a5f85]'
+      ? 'voice-wave--speaking'
+      : 'voice-wave--idle'
+
+  const statusText = isRecording
+    ? 'Listening'
+    : isSpeaking
+      ? 'Speaking'
+      : 'Tap to talk'
 
   return (
-    <div className="fixed bottom-4 right-4 md:right-auto md:bottom-8 md:left-[17rem] z-40">
+    <div className="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-40 w-[min(84vw,30rem)] pointer-events-none">
       <button
         type="button"
         onClick={toggleRecording}
-        title="Talk with Sensei"
-        className={`group relative h-[76px] w-[76px] rounded-full border-2 flex items-center justify-center shadow-[0_18px_45px_rgba(2,6,23,0.58)] transition-all duration-300 cursor-pointer ${orbToneClass}`}
+        title={statusText}
+        className={`voice-wave-shell ${waveformStateClass} pointer-events-auto`}
       >
-        <span className="absolute inset-[3px] rounded-full bg-gradient-to-b from-white/16 to-transparent pointer-events-none" />
-        <span className="absolute inset-[8px] rounded-full border border-white/16 pointer-events-none" />
+        <span className="voice-wave-glow" />
+        <span className="voice-wave-core" />
+        <span className="voice-wave-peak voice-wave-peak-1" />
+        <span className="voice-wave-peak voice-wave-peak-2" />
+        <span className="voice-wave-peak voice-wave-peak-3" />
+        <span className="voice-wave-peak voice-wave-peak-4" />
+        <span className="voice-wave-peak voice-wave-peak-5" />
 
-        {(isRecording || isSpeaking) && (
-          <span
-            className={`absolute -inset-2 rounded-full border animate-pulse ${
-              isRecording ? 'border-sky-300/45' : 'border-emerald-300/45'
-            }`}
-          />
-        )}
-
-        {!isRecording && !isSpeaking && (
-          <span className="absolute -inset-1 rounded-full border border-indigo-300/25 sensei-ring-idle" />
-        )}
-
-        <div className="relative z-10 h-8 w-8 text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]">
+        <span className="voice-wave-center">
           {isSpeaking ? (
-            <SpeakerIcon className="h-full w-full" />
+            <SpeakerIcon className="h-5 w-5" />
           ) : isRecording ? (
-            <MicIcon className="h-full w-full" />
+            <MicIcon className="h-5 w-5" />
           ) : (
-            <SenseiIcon className="h-full w-full" />
+            <MicIcon className="h-5 w-5" />
           )}
-        </div>
+        </span>
       </button>
     </div>
   )
