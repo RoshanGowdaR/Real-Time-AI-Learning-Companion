@@ -1,52 +1,108 @@
-# StudyBuddy: Your AI-Powered Personal Learning Companion
+# StudyBuddy: Advanced AI-Powered RAG Learning Ecosystem
 
-StudyBuddy is a full-stack AI platform designed to help students learn faster and more effectively by transforming static study materials into interactive, intelligent conversations.
+StudyBuddy is a high-performance, full-stack learning platform that leverages Retrieval-Augmented Generation (RAG) and low-latency LLM orchestration to transform static academic documents into interactive, context-aware digital tutors.
 
-## 🚀 Features
+## SYSTEM ARCHITECTURE
 
-- **📄 Smart PDF Summarization**: Upload your notes and get instant, structured study summaries.
-- **🧠 AI Sensei Assistant**: A conversational tutor that answers questions based on your specific study materials.
-- **🎙️ Voice Interaction**: Talk to Sensei directly with low-latency speech-to-text and text-to-speech.
-- **💾 Study Memory**: Sensei remembers your past sessions and greets you personally with motivational goals.
-- **✨ Premium UI**: A modern, dark-themed dashboard with a focused A4 workspace for deep study.
+| Component | Technology | Role |
+|:---|:---|:---|
+| **Frontend** | React 18, Vite, Tailwind CSS v4 | High-fidelity UI & Client-side State |
+| **Backend** | FastAPI, Python 3.10+ | Asynchronous RESTful API Middleware |
+| **Vector Engine** | FAISS, LangChain | Localized Vector Embeddings & Similarity Search |
+| **Primary LLM** | Llama 3.3 70B (via Groq) | Contextual Reasoning & Synthesis |
+| **Database** | Supabase (PostgreSQL) | Relational Persistence & Identity Management |
+| **Voice Ops** | STT/TTS (Groq Whispher/Llama) | Low-latency Audio Processing |
 
-## 🏗️ Tech Stack
+---
 
-### Backend
-- **FastAPI**: High-performance Python web framework.
-- **Groq API**: Powering LLM (Llama 3.3 70B) and TTS (Orpheus).
-- **LangChain & FAISS**: RAG (Retrieval Augmented Generation) for document intelligence.
-- **Supabase**: Cloud database for student profiles and study history.
+## PROJECT STRUCTURE
 
-### Frontend
-- **React + Vite**: Fast, modern frontend architecture.
-- **Tailwind CSS v4**: Sleek, modern styling with glassmorphism effects.
-- **React Router**: Seamless navigation between landing and study pages.
+```text
+StudyBudy/
+├── studybuddy-backend/      # FastAPI Server, RAG Services, LLM Logic
+├── studybuddy-frontend/     # React Client, Vite Build System, UI Components
+├── vectorstore/             # Persistent FAISS indices per user
+└── README.md                # Root Documentation (this file)
+```
 
-## ⚙️ Setup & Installation
+---
+
+## CORE TECHNICAL WORKFLOWS
+
+### 1. RAG-Based Knowledge Extraction
+- **Ingestion**: PDF documents are uploaded via `/api/upload`.
+- **Segmentation**: LangChain's `RecursiveCharacterTextSplitter` breaks down text into optimized chunks.
+- **Vectorization**: Chunks are embedded and stored in a local FAISS index uniquely keyed to the `student_id`.
+- **Retrieval**: User queries trigger a semantic similarity search across the vector store to fetch relevant context before passing it to the LLM.
+
+### 2. Multi-Mode Search & Synthesis
+The platform supports three distinct intelligence modes:
+- **PDF Core**: Extraction and summarization directly from uploaded academic materials.
+- **Web Intelligence**: Real-time synthesis of external academic concepts using LLM search patterns.
+- **Fast Research**: Rapid-fire document analysis for immediate study extraction.
+
+### 3. Voice-First Interaction
+Utilizing Groq's low-latency inference, the application provides a "Voice Orb" interface:
+- **STT (Speech-to-Text)**: High-accuracy intent capture.
+- **TTS (Text-to-Speech)**: Natural-sounding response streaming to reduce cognitive load.
+
+---
+
+## DATABASE SCHEMA (SUPABASE)
+
+| Table | Purpose |
+|:---|:---|
+| `students` | Core user profiles, authentication, and hash-based identification. |
+| `documents` | Metadata for uploaded PDFs including storage paths and processing status. |
+| `talks` | Historical record of chat and voice interactions for session memory. |
+| `flashcards` | AI-generated repetitive learning units linked to document contexts. |
+
+---
+
+## API REFERENCE (SELECTED ENDPOINTS)
+
+```http
+POST /api/chat
+Content-Type: application/json
+{
+  "student_id": "uuid",
+  "message": "Explain backpropagation."
+}
+
+POST /api/notes/generate
+Content-Type: application/json
+{
+  "student_id": "uuid",
+  "query": "Linear Algebra",
+  "search_type": "web" | "research" | "pdf"
+}
+```
+
+---
+
+## SETUP & DEPLOYMENT
 
 ### Prerequisites
-- Python 3.10+
-- Node.js (LTS)
-- Groq API Key
-- Supabase Account
+- Python 3.10+ & Node.js 18+
+- API Keys: `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 
-### 1. Backend Setup
+### 1. Backend Initialization
 ```bash
 cd studybuddy-backend
 python -m venv .venv
 .\.venv\Scripts\Activate
 pip install -r requirements.txt
-# Create .env based on .env.example
-uvicorn main:app --reload
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-### 2. Frontend Setup
+### 2. Frontend Initialization
 ```bash
 cd studybuddy-frontend
 npm install
 npm run dev
 ```
+
+
 
 ## 📜 License
 MIT

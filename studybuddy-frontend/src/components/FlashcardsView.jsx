@@ -1,6 +1,17 @@
  import React, { useMemo, useState } from 'react'
 import ProgressRing from './ProgressRing'
 
+function TrashIcon({ className = 'h-4 w-4' }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+      <path d="M4.7 5.8h10.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M8 5.8V4.6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M6.2 5.8 6.8 15a1.3 1.3 0 0 0 1.3 1.2h3.8a1.3 1.3 0 0 0 1.3-1.2l.6-9.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M8.6 8.4v5.2M11.4 8.4v5.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function getUniqueSubjects(flashcards) {
   const subjectSet = new Set()
   flashcards.forEach((card) => subjectSet.add(card.subject || 'General'))
@@ -13,6 +24,7 @@ export default function FlashcardsView({
   onCreateCard,
   onToggleMastered,
   onMarkReviewed,
+  onDeleteCard,
 }) {
   const [subjectFilter, setSubjectFilter] = useState('all')
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -60,11 +72,17 @@ export default function FlashcardsView({
     setShowAnswer(false)
   }
 
-  const handleMastered = () => {
+  const handleMastered = async () => {
     if (!activeCard) return
-    onToggleMastered(activeCard.id)
-    setActionMessage(activeCard.mastered ? 'Marked as learning' : 'Marked as mastered')
-    setActionError('')
+
+    try {
+      await onToggleMastered(activeCard.id)
+      setActionMessage(activeCard.mastered ? 'Marked as learning' : 'Marked as mastered')
+      setActionError('')
+    } catch (err) {
+      setActionError(err.message || 'Could not update this card right now.')
+      setActionMessage('')
+    }
   }
 
   const handleShare = async () => {
@@ -79,7 +97,22 @@ export default function FlashcardsView({
     }
   }
 
-  const handleCreateCard = (e) => {
+  const handleDelete = async () => {
+    if (!activeCard || !onDeleteCard) return
+
+    try {
+      await onDeleteCard(activeCard.id)
+      setActionMessage('Flashcard deleted.')
+      setActionError('')
+      setShowAnswer(false)
+      setCurrentIndex(0)
+    } catch (err) {
+      setActionError(err.message || 'Could not delete this card right now.')
+      setActionMessage('')
+    }
+  }
+
+  const handleCreateCard = async (e) => {
     e.preventDefault()
     const payload = {
       subject: (form.subject.trim() || 'General'),
@@ -92,14 +125,19 @@ export default function FlashcardsView({
       return
     }
 
-    onCreateCard(payload)
-    setForm({ subject: '', question: '', answer: '' })
-    setShowCreateForm(false)
-    setActionMessage('Flashcard created.')
-    setActionError('')
-    setSubjectFilter('all')
-    setCurrentIndex(0)
-    setShowAnswer(false)
+    try {
+      await onCreateCard(payload)
+      setForm({ subject: '', question: '', answer: '' })
+      setShowCreateForm(false)
+      setActionMessage('Flashcard created.')
+      setActionError('')
+      setSubjectFilter('all')
+      setCurrentIndex(0)
+      setShowAnswer(false)
+    } catch (err) {
+      setActionError(err.message || 'Could not create flashcard right now.')
+      setActionMessage('')
+    }
   }
 
   return (
@@ -288,6 +326,15 @@ export default function FlashcardsView({
                 <button type="button" onClick={handleNext} className="rounded-lg bg-[#1f2132] border border-[#2c2d42] text-gray-300 text-xs py-2 hover:text-white">Next</button>
                 <button type="button" onClick={handleMastered} className="rounded-lg bg-[#1f2132] border border-[#2c2d42] text-gray-300 text-xs py-2 hover:text-white">Mastered</button>
                 <button type="button" onClick={handleShare} className="rounded-lg bg-[#1f2132] border border-[#2c2d42] text-gray-300 text-xs py-2 hover:text-white">Share</button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  title="Delete card"
+                  aria-label="Delete card"
+                  className="col-span-2 rounded-lg bg-[#3a1e2a] border border-[#5f3347] text-red-200 py-2 flex items-center justify-center hover:bg-red-600 hover:text-white"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
               </div>
               {actionMessage && <p className="text-green-400 text-xs mt-2">{actionMessage}</p>}
               {actionError && <p className="text-red-400 text-xs mt-2">{actionError}</p>}

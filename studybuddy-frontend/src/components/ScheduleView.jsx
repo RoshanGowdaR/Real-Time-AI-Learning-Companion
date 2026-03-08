@@ -68,7 +68,7 @@ function sortEvents(a, b) {
   return a.startTime.localeCompare(b.startTime)
 }
 
-export default function ScheduleView({ sessions, customEvents, onCreateEvent }) {
+export default function ScheduleView({ sessions, customEvents, onCreateEvent, onDeleteEvent }) {
   const [viewMode, setViewMode] = useState('weekly')
   const [showEventForm, setShowEventForm] = useState(false)
   const [eventError, setEventError] = useState('')
@@ -122,7 +122,7 @@ export default function ScheduleView({ sessions, customEvents, onCreateEvent }) 
     .sort(sortEvents)
     .slice(0, 4)
 
-  const handleSubmitEvent = (e) => {
+  const handleSubmitEvent = async (e) => {
     e.preventDefault()
     setEventError('')
 
@@ -142,25 +142,40 @@ export default function ScheduleView({ sessions, customEvents, onCreateEvent }) 
       return
     }
 
-    onCreateEvent({
-      id: crypto.randomUUID(),
-      title,
-      subject: subject || 'General',
-      date: eventForm.date,
-      startTime: eventForm.startTime,
-      endTime: eventForm.endTime,
-      priority: eventForm.priority,
-    })
+    try {
+      await onCreateEvent({
+        id: crypto.randomUUID(),
+        title,
+        subject: subject || 'General',
+        date: eventForm.date,
+        startTime: eventForm.startTime,
+        endTime: eventForm.endTime,
+        priority: eventForm.priority,
+      })
 
-    setEventForm({
-      title: '',
-      date: '',
-      startTime: '09:00',
-      endTime: '10:00',
-      subject: '',
-      priority: 'normal',
-    })
-    setShowEventForm(false)
+      setEventForm({
+        title: '',
+        date: '',
+        startTime: '09:00',
+        endTime: '10:00',
+        subject: '',
+        priority: 'normal',
+      })
+      setShowEventForm(false)
+    } catch (err) {
+      setEventError(err.message || 'Could not create event right now.')
+    }
+  }
+
+  const handleDeleteEvent = async (event) => {
+    if (!event || event.aiSuggested || !onDeleteEvent) return
+
+    try {
+      setEventError('')
+      await onDeleteEvent(event.id)
+    } catch (err) {
+      setEventError(err.message || 'Could not delete event right now.')
+    }
   }
 
   return (
@@ -194,10 +209,21 @@ export default function ScheduleView({ sessions, customEvents, onCreateEvent }) 
                       : 'bg-[#1b1d2e] border-[#2d3044]'
                   }`}
                 >
-                  <p className="text-sm text-white font-medium leading-snug">{event.title}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {event.date} • {event.startTime}
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm text-white font-medium leading-snug">{event.title}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {event.date} • {event.startTime}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEvent(event)}
+                      className="text-[10px] rounded-md bg-[#3a1e2a] hover:bg-red-600 text-red-100 px-2 py-1"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))
             ) : (
@@ -323,9 +349,22 @@ export default function ScheduleView({ sessions, customEvents, onCreateEvent }) 
                                   : 'bg-[#1b1d2e] border-[#2d3044]'
                             }`}
                           >
-                            {event.aiSuggested && <p className="text-[9px] uppercase tracking-wider text-indigo-300">AI Suggested</p>}
-                            <p className="text-sm text-white font-medium leading-snug">{event.title}</p>
-                            <p className="text-[11px] text-gray-400 mt-1">{event.startTime} - {event.endTime}</p>
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                {event.aiSuggested && <p className="text-[9px] uppercase tracking-wider text-indigo-300">AI Suggested</p>}
+                                <p className="text-sm text-white font-medium leading-snug">{event.title}</p>
+                                <p className="text-[11px] text-gray-400 mt-1">{event.startTime} - {event.endTime}</p>
+                              </div>
+                              {!event.aiSuggested && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEvent(event)}
+                                  className="text-[10px] rounded-md bg-[#3a1e2a] hover:bg-red-600 text-red-100 px-2 py-1"
+                                >
+                                  Del
+                                </button>
+                              )}
+                            </div>
                           </article>
                         ))
                       ) : (
@@ -347,9 +386,20 @@ export default function ScheduleView({ sessions, customEvents, onCreateEvent }) 
                       <p className="text-sm text-white font-medium">{event.title}</p>
                       <p className="text-xs text-gray-400 mt-1">{event.date} • {event.startTime} - {event.endTime}</p>
                     </div>
-                    <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded ${event.aiSuggested ? 'bg-indigo-600/20 text-indigo-300' : 'bg-[#23253a] text-gray-300'}`}>
-                      {event.aiSuggested ? 'AI' : event.priority}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded ${event.aiSuggested ? 'bg-indigo-600/20 text-indigo-300' : 'bg-[#23253a] text-gray-300'}`}>
+                        {event.aiSuggested ? 'AI' : event.priority}
+                      </span>
+                      {!event.aiSuggested && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEvent(event)}
+                          className="text-[10px] rounded-md bg-[#3a1e2a] hover:bg-red-600 text-red-100 px-2 py-1"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (

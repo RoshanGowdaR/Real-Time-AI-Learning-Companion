@@ -54,14 +54,16 @@ function summarize(text = '') {
   return cleaned.length > 120 ? `${cleaned.slice(0, 120)}...` : cleaned
 }
 
-export default function LibraryView({ documents, onUpload, onGenerate, onOpenWorkspace }) {
+export default function LibraryView({ documents, onUpload, onGenerate, onOpenWorkspace, onDeleteDocument }) {
   const [activeFilter, setActiveFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [uploadSuccess, setUploadSuccess] = useState('')
   const [activeGenerateId, setActiveGenerateId] = useState(null)
+  const [activeDeleteId, setActiveDeleteId] = useState(null)
   const [generateError, setGenerateError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const fileInputRef = useRef(null)
 
   const resourceLimit = Number(import.meta.env.VITE_RESOURCE_LIMIT || 100)
@@ -99,6 +101,7 @@ export default function LibraryView({ documents, onUpload, onGenerate, onOpenWor
     setUploadError('')
     setUploadSuccess('')
     setGenerateError('')
+    setDeleteError('')
     setUploading(true)
 
     try {
@@ -114,6 +117,7 @@ export default function LibraryView({ documents, onUpload, onGenerate, onOpenWor
 
   const handleGenerate = async (doc) => {
     setGenerateError('')
+    setDeleteError('')
     setActiveGenerateId(doc.id)
     try {
       await onGenerate(doc)
@@ -122,6 +126,21 @@ export default function LibraryView({ documents, onUpload, onGenerate, onOpenWor
       setGenerateError(err.message || 'Could not generate notes.')
     } finally {
       setActiveGenerateId(null)
+    }
+  }
+
+  const handleDelete = async (doc) => {
+    if (!onDeleteDocument) return
+
+    setGenerateError('')
+    setDeleteError('')
+    setActiveDeleteId(doc.id)
+    try {
+      await onDeleteDocument(doc)
+    } catch (err) {
+      setDeleteError(err.message || 'Could not delete resource.')
+    } finally {
+      setActiveDeleteId(null)
     }
   }
 
@@ -242,6 +261,7 @@ export default function LibraryView({ documents, onUpload, onGenerate, onOpenWor
         </div>
 
         {generateError && <p className="text-red-400 text-xs mt-2">{generateError}</p>}
+        {deleteError && <p className="text-red-400 text-xs mt-2">{deleteError}</p>}
 
         <div className="mt-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredDocuments.length > 0 ? (
@@ -261,21 +281,32 @@ export default function LibraryView({ documents, onUpload, onGenerate, onOpenWor
 
                   <div className="mt-4 flex items-center justify-between gap-2">
                     <span className="text-[10px] rounded-full bg-[#20233a] text-indigo-300 px-2 py-1 uppercase tracking-wider">{subject}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleGenerate(doc)}
-                      disabled={activeGenerateId === doc.id}
-                      className="text-xs rounded-lg bg-[#25283b] hover:bg-indigo-600 text-gray-300 hover:text-white px-3 py-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {activeGenerateId === doc.id ? (
-                        <span className="inline-flex items-center gap-1">
-                          <LoadingSpinner className="w-3.5 h-3.5" />
-                          Notes
-                        </span>
-                      ) : (
-                        'Generate Notes'
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleGenerate(doc)}
+                        disabled={activeGenerateId === doc.id}
+                        className="text-xs rounded-lg bg-[#25283b] hover:bg-indigo-600 text-gray-300 hover:text-white px-3 py-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {activeGenerateId === doc.id ? (
+                          <span className="inline-flex items-center gap-1">
+                            <LoadingSpinner className="w-3.5 h-3.5" />
+                            Notes
+                          </span>
+                        ) : (
+                          'Generate Notes'
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(doc)}
+                        disabled={activeDeleteId === doc.id}
+                        className="text-xs rounded-lg bg-[#3a1e2a] hover:bg-red-600 text-red-100 px-3 py-1.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {activeDeleteId === doc.id ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
                 </article>
               )
