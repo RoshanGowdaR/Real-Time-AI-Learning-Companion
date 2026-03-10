@@ -5,15 +5,20 @@ from config import GROQ_API_KEY
 
 llm = ChatGroq(
     api_key=GROQ_API_KEY,
-    model="llama3-8b-8192",
+    model="llama-3.3-70b-versatile",
 )
 
 
 def generate_notes(text: str) -> str:
     """Convert text into structured study notes."""
     system = (
-        "You are StudyBuddy. Convert the text into structured study notes with "
-        "headings, bullet points, key terms highlighted, and a short summary at the end."
+        "You are StudyBuddy — a smart AI study companion. "
+        "Convert the provided text into well-structured study notes using:\n"
+        "- Clear section headings\n"
+        "- Bullet points for key concepts\n"
+        "- Key terms in **bold**\n"
+        "- A 2-3 sentence summary at the end.\n"
+        "Be concise and student-friendly."
     )
     messages = [("system", system), ("human", text)]
     response = llm.invoke(messages)
@@ -21,26 +26,64 @@ def generate_notes(text: str) -> str:
 
 
 def answer_question(question: str, context: str) -> str:
-    """Answer based on context only. Concise and student-friendly."""
+    """Answer student questions based on uploaded PDF context or general knowledge."""
     system = (
-        "You are Sensei, a friendly study assistant. Answer based on the given "
-        "context only. Be concise and student-friendly."
+        "You are Sensei — a warm, conversational AI study assistant for students.\n\n"
+        "RULES:\n"
+        "1. If the student's question is VAGUE (e.g., 'give me study strategy' without specifying topic), "
+        "ASK a clarifying question first. Example: 'Sure! Which subject or topic would you like strategy for?'\n"
+        "2. If the user asks about a SUBJECT and there is relevant context from their uploaded PDF, use it.\n"
+        "3. If there is NO uploaded PDF context (context is empty), tell the student: "
+        "'I don't see any study material uploaded for this topic. Would you like to upload your notes so I can "
+        "give you targeted help? Or I can suggest based on the general syllabus.'\n"
+        "4. For EXAM prep questions (e.g., 'what to focus on for 5 marks'), give specific, practical advice.\n"
+        "5. Always end with an encouraging line.\n"
+        "6. Keep responses under 150 words unless asked for detailed notes.\n\n"
+        f"Uploaded PDF Context:\n{context if context.strip() else '[No PDF uploaded yet]'}"
     )
-    user_msg = f"Context:\n{context}\n\nQuestion: {question}"
+    user_msg = f"Student: {question}"
+    messages = [("system", system), ("human", user_msg)]
+    response = llm.invoke(messages)
+    return response.content
+
+
+def search_and_synthesize(query: str, search_type: str) -> str:
+    """Simulate web/research search and synthesize into notes via LLM."""
+    type_label = "Deep Academic Research" if search_type == "research" else "Web Search"
+    system = (
+        f"You are StudyBuddy — an expert researcher. Use your knowledge to simulate a {type_label} result.\n"
+        "Convert your simulated findings into well-structured study notes using:\n"
+        "- Clear section headings\n"
+        "- Bullet points for key concepts\n"
+        "- Key terms in **bold**\n"
+        "- A 2-3 sentence summary at the end.\n"
+        "Focus on providing high-quality, accurate educational content."
+    )
+    user_msg = f"Simulate a {search_type} for: {query}"
     messages = [("system", system), ("human", user_msg)]
     response = llm.invoke(messages)
     return response.content
 
 
 def generate_greeting(student_name: str, recent_sessions: list) -> str:
-    """Generate personalized greeting mentioning recent sessions and a goal."""
-    system = (
-        "You are Sensei, a warm AI study companion."
-    )
+    """Generate a warm, personalized greeting for the student."""
+    has_sessions = len(recent_sessions) > 0
+    session_info = ""
+    if has_sessions:
+        topics = [s.get("topics_covered", []) for s in recent_sessions]
+        flat_topics = [t for sub in topics for t in sub]
+        session_info = f"Their recent study topics were: {', '.join(flat_topics[:5])}." if flat_topics else ""
+
+    system = "You are Sensei, a warm and encouraging AI study companion for students."
     user_msg = (
-        f"Write a short personalized greeting for {student_name}. "
-        f"Recent sessions: {recent_sessions}. Mention what they studied, "
-        f"and give one motivating goal for today. Max 80 words."
+        f"Greet a student named {student_name}. "
+        f"{'They are a returning student. ' + session_info if has_sessions else 'This is their first session.'} "
+        f"Do the following in order:\n"
+        f"1. Welcome them warmly by name.\n"
+        f"2. If returning, briefly mention what they studied before and compliment their consistency.\n"
+        f"3. Give ONE short (2-sentence) motivational message.\n"
+        f"4. End with: 'How can I help you today?'\n"
+        f"Keep the total response under 80 words. Sound friendly and natural, not robotic."
     )
     messages = [("system", system), ("human", user_msg)]
     response = llm.invoke(messages)

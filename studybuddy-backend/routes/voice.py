@@ -35,7 +35,7 @@ async def text_to_speech_endpoint(body: TTSRequest):
         audio_bytes = text_to_speech(body.text)
         return StreamingResponse(
             iter([audio_bytes]),
-            media_type="audio/mpeg",
+            media_type="audio/wav",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
