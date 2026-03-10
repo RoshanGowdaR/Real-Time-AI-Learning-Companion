@@ -12,3 +12,6 @@ pydantic
 supabase
 httpx
 requests
+deepface
+opencv-python-headless
+tf-keras

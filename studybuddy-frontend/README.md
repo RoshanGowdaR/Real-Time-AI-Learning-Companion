@@ -1,16 +1,40 @@
-# React + Vite
+# StudyBuddy Frontend: React Learning Workspace
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, high-performance web interface for AI-assisted study, built with React 18 and Vite.
 
-Currently, two official plugins are available:
+## TECHNICAL ARCHITECTURE
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### State Management & Communication
+- **API Strategy**: Centralized `apiService.js` using Axios for asynchronous backend synchronization.
+- **Real-time UX**: React Hooks (useState/useEffect) for managing dynamic workspace states (Notebook, Chat, Flashcards).
 
-## React Compiler
+### Design Foundation
+- **Styling**: Tailwind CSS v4 featuring native CSS variables and high-performance JIT compilation.
+- **UI Paradigm**: Focused "A4 Workspace" design intended to mimic physical study environments with digital enhancements.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## CORE MODULES
+| Module | Responsibility |
+|:---|:---|
+| **Dashboard** | Overview of study performance and motivation goals. |
+| **WorkspaceView** | Central interaction point for RAG-based note generation. |
+| **VoiceOrb** | Logic container for STT/TTS interaction and low-latency feedback. |
+| **Sensei** | Contextual chatbot interface with student session memory. |
 
-## Expanding the ESLint configuration
+## DEVELOPMENT WORKFLOW
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Environment Setup
+```bash
+# Install Dependencies
+npm install
+
+# Dev Server (Vite)
+npm run dev
+
+# Production Build
+npm run build
+```
+
+### Integration Points
+- **Supabase Integration**: Synchronizes student profiles and interactions.
+- **RAG Pipeline**: Proxies PDF notes and search queries to the Python backend for synthesis.
+

@@ -47,6 +47,24 @@ def answer_question(question: str, context: str) -> str:
     return response.content
 
 
+def search_and_synthesize(query: str, search_type: str) -> str:
+    """Simulate web/research search and synthesize into notes via LLM."""
+    type_label = "Deep Academic Research" if search_type == "research" else "Web Search"
+    system = (
+        f"You are StudyBuddy — an expert researcher. Use your knowledge to simulate a {type_label} result.\n"
+        "Convert your simulated findings into well-structured study notes using:\n"
+        "- Clear section headings\n"
+        "- Bullet points for key concepts\n"
+        "- Key terms in **bold**\n"
+        "- A 2-3 sentence summary at the end.\n"
+        "Focus on providing high-quality, accurate educational content."
+    )
+    user_msg = f"Simulate a {search_type} for: {query}"
+    messages = [("system", system), ("human", user_msg)]
+    response = llm.invoke(messages)
+    return response.content
+
+
 def generate_greeting(student_name: str, recent_sessions: list) -> str:
     """Generate a warm, personalized greeting for the student."""
     has_sessions = len(recent_sessions) > 0
@@ -67,6 +85,31 @@ def generate_greeting(student_name: str, recent_sessions: list) -> str:
         f"4. End with: 'How can I help you today?'\n"
         f"Keep the total response under 80 words. Sound friendly and natural, not robotic."
     )
+    messages = [("system", system), ("human", user_msg)]
+    response = llm.invoke(messages)
+    return response.content
+
+
+def generate_flashcard_answer(question: str, subject: str, context: str = "") -> str:
+    """Generate a concise flashcard answer, grounded by context when available."""
+    safe_subject = (subject or "General").strip() or "General"
+
+    system = (
+        "You are StudyBuddy Flashcard AI. Write a concise, exam-ready answer for a study flashcard.\n"
+        "Rules:\n"
+        "1. Keep answer short: 2-5 sentences, or brief bullet points when helpful.\n"
+        "2. Use simple, student-friendly language.\n"
+        "3. If context is provided, prioritize it.\n"
+        "4. If context is missing, rely on accurate general knowledge for the subject.\n"
+        "5. Do not include markdown headings or disclaimers.\n"
+    )
+
+    user_msg = (
+        f"Subject: {safe_subject}\n"
+        f"Question: {question.strip()}\n\n"
+        f"Context:\n{context.strip() if context.strip() else '[No uploaded context found]'}"
+    )
+
     messages = [("system", system), ("human", user_msg)]
     response = llm.invoke(messages)
     return response.content
