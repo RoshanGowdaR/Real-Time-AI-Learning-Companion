@@ -10,7 +10,6 @@ python tests/create_sample_pdf.py
 **Run order:** Run `test_student.py` first to get `student_id`, then update `STUDENT_ID` in other tests. For `test_upload`, use that ID and update `FILENAME`/`DOCUMENT_ID` in `test_notes` from the upload response.
 
 ```bash
-
 python tests/test_student.py
 python tests/test_upload.py      # uses STUDENT_ID
 python tests/test_chat.py        # uses STUDENT_ID

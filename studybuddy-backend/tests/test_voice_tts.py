@@ -2,7 +2,7 @@
 import os
 import requests
 
-from _test_utils import BASE_URL
+BASE_URL = "http://localhost:8000"
 OUTPUT_FILE = "test_output.mp3"
 
 try:
@@ -19,8 +19,8 @@ try:
         for chunk in r.iter_content(chunk_size=8192):
             f.write(chunk)
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-        print(f"PASS (saved to {output_path})")
+        print(f"PASS ✅ (saved to {output_path})")
     else:
-        print("FAIL: file not saved or empty")
+        print("FAIL ❌ file not saved or empty")
 except Exception as e:
-    print(f"FAIL: {e}")
+    print(f"FAIL ❌ {e}")

@@ -11,5 +11,3 @@ uploads/*
 vectorstore/*
 !vectorstore/.gitkeep
 test_output.mp3
-.test_state.json
-tests/sample.pdf

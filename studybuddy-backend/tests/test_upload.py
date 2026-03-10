@@ -2,15 +2,15 @@
 import os
 import requests
 
-from _test_utils import BASE_URL, require_state, save_state
+BASE_URL = "http://localhost:8000"
+STUDENT_ID = "00000000-0000-0000-0000-000000000000"  # Replace with real UUID from test_student
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 sample_pdf = os.path.join(script_dir, "sample.pdf")
 
 try:
-    STUDENT_ID = require_state("student_id")
     if not os.path.exists(sample_pdf):
-        print(f"FAIL: sample.pdf not found at {sample_pdf}")
+        print(f"FAIL ❌ sample.pdf not found at {sample_pdf}")
     else:
         with open(sample_pdf, "rb") as f:
             r = requests.post(
@@ -24,12 +24,8 @@ try:
         summary = data.get("summary", "")
         print(f"summary: {summary[:200]}..." if len(summary) > 200 else f"summary: {summary}")
         if data.get("status") == "success":
-            document_id = data.get("document_id")
-            filename = data.get("filename") or "sample.pdf"
-            if document_id:
-                save_state({"document_id": document_id, "filename": filename})
-            print("PASS")
+            print("PASS ✅")
         else:
-            print("FAIL: status not success")
+            print("FAIL ❌ status not success")
 except Exception as e:
-    print(f"FAIL: {e}")
+    print(f"FAIL ❌ {e}")

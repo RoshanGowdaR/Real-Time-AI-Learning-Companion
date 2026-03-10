@@ -10,8 +10,8 @@ app = FastAPI(title="StudyBuddy API")
 
 @app.on_event("startup")
 def startup():
-    print("StudyBuddy REST API is running")
-    print("All routes loaded")
+    print("✅ StudyBuddy REST API is running")
+    print("✅ All routes loaded")
 
 
 @app.exception_handler(Exception)
