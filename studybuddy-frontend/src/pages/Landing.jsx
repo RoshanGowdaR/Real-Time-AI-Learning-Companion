@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
 
-export default function Landing() {
-  const [mode, setMode] = useState('signup')
+export default function Landing({ onAuthSuccess }) {
+  const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,8 +12,12 @@ export default function Landing() {
   const navigate = useNavigate()
 
   const finishAuth = (res) => {
-    localStorage.setItem('student_id', res.student_id)
-    localStorage.setItem('student_name', res.name)
+    if (typeof onAuthSuccess === 'function') {
+      onAuthSuccess(res)
+    } else {
+      localStorage.setItem('student_id', res.student_id)
+      localStorage.setItem('student_name', res.name)
+    }
     navigate('/app')
   }
 
@@ -28,29 +32,27 @@ export default function Landing() {
     try {
       let res
       if (mode === 'signup') {
-        try {
-          res = await api.registerStudent(normalizedName, normalizedEmail)
-        } catch (signupErr) {
-          const message = (signupErr?.message || '').toLowerCase()
-          const accountExists =
-            message.includes('already registered') ||
-            message.includes('already exist') ||
-            message.includes('duplicate') ||
-            message.includes('unique')
-
-          if (!accountExists) throw signupErr
-
-          // Existing account path: switch UI mode and sign in directly.
-          setMode('login')
-          res = await api.loginStudent(normalizedEmail)
-        }
+        res = await api.registerStudent(normalizedName, normalizedEmail)
       } else {
         res = await api.loginStudent(normalizedEmail)
       }
 
       finishAuth(res)
     } catch (err) {
-      setError(err.message || 'Authentication failed. Please try again.')
+      const message = err?.message || 'Authentication failed. Please try again.'
+      const lowered = String(message).toLowerCase()
+
+      if (
+        mode === 'signup' &&
+        (lowered.includes('already registered') ||
+          lowered.includes('already exist') ||
+          lowered.includes('duplicate') ||
+          lowered.includes('unique'))
+      ) {
+        setError('This email already has an account. Please use Login tab.')
+      } else {
+        setError(message)
+      }
       console.error(err)
     } finally {
       setLoading(false)

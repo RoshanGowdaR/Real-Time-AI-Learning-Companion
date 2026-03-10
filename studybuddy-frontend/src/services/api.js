@@ -1,9 +1,69 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
 
+function normalizeKnownErrorMessage(rawMessage) {
+  const message = String(rawMessage || "").trim()
+  const lowered = message.toLowerCase()
+
+  const missingTableError = lowered.includes("pgrst205") || lowered.includes("could not find the table")
+  if (!missingTableError) {
+    return message
+  }
+
+  const tableMatch = lowered.match(/public\.([a-z_][a-z0-9_]*)/)
+  const tableName = tableMatch?.[1]
+
+  if (tableName === "schedule_events") {
+    return "Schedule storage is not set up yet. Run studybuddy-backend/supabase_schema.sql in Supabase SQL Editor once (recommended), or run studybuddy-backend/supabase_patch_schedule_events.sql, then retry."
+  }
+
+  if (tableName === "flashcards" || tableName === "flashcard_review_days") {
+    return "Flashcards storage is not set up yet. Run studybuddy-backend/supabase_schema.sql in Supabase SQL Editor once (recommended), or run studybuddy-backend/supabase_patch_flashcards.sql, then retry."
+  }
+
+  if (tableName) {
+    return `Database table public.${tableName} is not set up yet. Run studybuddy-backend/supabase_schema.sql in Supabase SQL Editor, then retry.`
+  }
+
+  return message
+}
+
+function toErrorMessage(payload, fallbackMessage) {
+  const candidate = payload?.detail ?? payload?.error ?? payload?.message ?? payload
+
+  if (!candidate) return fallbackMessage
+
+  if (typeof candidate === "string") {
+    return normalizeKnownErrorMessage(candidate) || fallbackMessage
+  }
+
+  if (Array.isArray(candidate)) {
+    const joined = candidate
+      .map((item) => {
+        if (typeof item === "string") return item
+        if (item && typeof item.msg === "string") return item.msg
+        if (item && typeof item.message === "string") return item.message
+        return ""
+      })
+      .filter(Boolean)
+      .join("; ")
+
+    return joined || fallbackMessage
+  }
+
+  if (typeof candidate === "object") {
+    const objectMessage = candidate.message || candidate.detail
+    if (typeof objectMessage === "string") {
+      return normalizeKnownErrorMessage(objectMessage) || fallbackMessage
+    }
+  }
+
+  return fallbackMessage
+}
+
 async function parseError(res, fallbackMessage) {
   try {
     const data = await res.json()
-    return new Error(data.detail || data.error || fallbackMessage)
+    return new Error(toErrorMessage(data, fallbackMessage))
   } catch {
     return new Error(fallbackMessage)
   }
@@ -131,6 +191,19 @@ export const api = {
     return res.json()
   },
 
+  generateFlashcardAnswer: async (student_id, payload) => {
+    const res = await fetch(`${BASE_URL}/api/flashcards/${student_id}/generate-answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subject: payload.subject,
+        question: payload.question,
+      }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to generate flashcard answer")
+    return res.json()
+  },
+
   updateFlashcard: async (student_id, flashcard_id, updates) => {
     const res = await fetch(`${BASE_URL}/api/flashcards/${student_id}/${flashcard_id}`, {
       method: "PATCH",
@@ -238,6 +311,19 @@ export const api = {
       method: "DELETE",
     })
     if (!res.ok) throw await parseError(res, "Failed to unassign resource from workspace")
+    return res.json()
+  },
+
+  analyzeEmotion: async (imageBlob, student_id) => {
+    const formData = new FormData()
+    formData.append("file", imageBlob, "frame.jpg")
+    formData.append("student_id", student_id)
+
+    const res = await fetch(`${BASE_URL}/api/emotion/analyze`, {
+      method: "POST",
+      body: formData,
+    })
+    if (!res.ok) throw await parseError(res, "Emotion analysis failed")
     return res.json()
   },
 

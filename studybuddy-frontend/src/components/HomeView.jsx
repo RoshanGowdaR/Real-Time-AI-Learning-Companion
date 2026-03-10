@@ -15,6 +15,35 @@ function formatDateKey(date) {
   return date.toISOString().slice(0, 10)
 }
 
+function normalizeDateKey(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return text.length >= 10 ? text.slice(0, 10) : ''
+}
+
+function toMinutes(timeText) {
+  const [h = '0', m = '0'] = String(timeText || '').split(':')
+  const hours = Number(h)
+  const mins = Number(m)
+
+  if (Number.isNaN(hours) || Number.isNaN(mins)) return null
+  return hours * 60 + mins
+}
+
+function calculateDuration(startTime, endTime) {
+  const startMinutes = toMinutes(startTime)
+  const endMinutes = toMinutes(endTime)
+
+  if (startMinutes === null || endMinutes === null) return 45
+  if (startMinutes === endMinutes) return 45
+
+  if (endMinutes > startMinutes) {
+    return endMinutes - startMinutes
+  }
+
+  return 24 * 60 - startMinutes + endMinutes
+}
+
 function getLastDays(count) {
   const days = []
   const today = new Date()
@@ -29,7 +58,7 @@ function getLastDays(count) {
   return days
 }
 
-function buildStudySeries(sessions, dayCount = 7) {
+function buildStudySeries(sessions, scheduleEvents, reviewHistory, dayCount = 7) {
   const days = getLastDays(dayCount)
   const map = new Map(days.map((day) => [formatDateKey(day), 0]))
 
@@ -42,6 +71,27 @@ function buildStudySeries(sessions, dayCount = 7) {
 
     const duration = Number(session.duration_mins) || 45
     map.set(key, map.get(key) + duration)
+  })
+
+  scheduleEvents.forEach((event) => {
+    const key = normalizeDateKey(event.date)
+    if (!map.has(key)) return
+
+    const duration = calculateDuration(event.startTime, event.endTime)
+    map.set(key, map.get(key) + duration)
+  })
+
+  const history = reviewHistory && typeof reviewHistory === 'object' ? reviewHistory : {}
+  Object.entries(history).forEach(([key, count]) => {
+    if (!map.has(key)) return
+
+    const reviewCount = Number(count) || 0
+    if (reviewCount <= 0) return
+
+    const estimatedMinutes = Math.min(reviewCount * 5, 60)
+    if ((map.get(key) || 0) === 0) {
+      map.set(key, estimatedMinutes)
+    }
   })
 
   return days.map((day) => {
@@ -58,6 +108,7 @@ function buildStudySeries(sessions, dayCount = 7) {
 export default function HomeView({
   studentName,
   sessions,
+  customEvents,
   documents,
   reviewStats,
   workspaces,
@@ -69,12 +120,20 @@ export default function HomeView({
   const [workspaceName, setWorkspaceName] = useState('')
   const [workspaceError, setWorkspaceError] = useState('')
 
-  const studySeries = useMemo(() => buildStudySeries(sessions, 7), [sessions])
+  const studySeries = useMemo(
+    () => buildStudySeries(sessions, customEvents, reviewStats.history, 7),
+    [sessions, customEvents, reviewStats.history]
+  )
 
   const totalMinutes = studySeries.reduce((sum, item) => sum + item.minutes, 0)
   const activeStudyDays = studySeries.filter((item) => item.minutes > 0).length
   const avgMinsPerStudyDay = activeStudyDays > 0 ? Math.round(totalMinutes / activeStudyDays) : 0
   const maxMinutes = Math.max(...studySeries.map((item) => item.minutes), 60)
+  const trackedSessions = sessions.length > 0
+    ? sessions.length
+    : customEvents.length > 0
+      ? customEvents.length
+      : activeStudyDays
 
   const handleCreateWorkspace = async () => {
     const name = workspaceName.trim()
@@ -124,7 +183,7 @@ export default function HomeView({
 
         <article className="rounded-xl border border-[#252a44] bg-[#111526] p-4">
           <p className="text-xs uppercase tracking-widest text-gray-500">Sessions</p>
-          <p className="mt-2 text-3xl font-semibold text-white">{sessions.length}</p>
+          <p className="mt-2 text-3xl font-semibold text-white">{trackedSessions}</p>
           <p className="text-xs text-gray-400 mt-1">Recent tracked sessions</p>
         </article>
 

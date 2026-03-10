@@ -425,3 +425,257 @@ def remove_workspace_document(student_id: str, workspace_id: str, document_id: s
     if result.data:
         return result.data[0]
     return None
+
+
+async def log_emotion(student_id: str, emotion: str, confidence: float):
+    """Insert one emotion detection row and return inserted row or None."""
+    result = (
+        supabase.table("emotion_logs")
+        .insert(
+            {
+                "student_id": student_id,
+                "emotion": emotion,
+                "confidence": float(confidence),
+            }
+        )
+        .execute()
+    )
+
+    if result.data:
+        return result.data[0]
+    return None
+
+
+async def create_org(name: str, description: str, invite_code: str):
+    """Create one organization row."""
+    result = (
+        supabase.table("organizations")
+        .insert(
+            {
+                "name": name,
+                "description": description,
+                "invite_code": invite_code,
+            }
+        )
+        .execute()
+    )
+    return result.data[0]
+
+
+async def get_org_by_invite_code(code: str):
+    """Fetch organization by invite code."""
+    result = (
+        supabase.table("organizations")
+        .select("*")
+        .eq("invite_code", code)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_org_by_id(org_id: str):
+    """Fetch organization by id."""
+    result = (
+        supabase.table("organizations")
+        .select("*")
+        .eq("id", org_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def create_teacher(email: str, password_hash: str, full_name: str, org_id: str):
+    """Create one teacher row."""
+    result = (
+        supabase.table("teachers")
+        .insert(
+            {
+                "email": email,
+                "password_hash": password_hash,
+                "full_name": full_name,
+                "org_id": org_id,
+            }
+        )
+        .execute()
+    )
+    return result.data[0]
+
+
+async def get_teacher_by_email(email: str):
+    """Fetch teacher by email."""
+    result = (
+        supabase.table("teachers")
+        .select("*")
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_teacher_by_id(teacher_id: str):
+    """Fetch teacher by id."""
+    result = (
+        supabase.table("teachers")
+        .select("*")
+        .eq("id", teacher_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def create_subject(org_id: str, teacher_id: str, name: str, subject_code: str):
+    """Create one subject row."""
+    result = (
+        supabase.table("subjects")
+        .insert(
+            {
+                "org_id": org_id,
+                "teacher_id": teacher_id,
+                "name": name,
+                "subject_code": subject_code,
+            }
+        )
+        .execute()
+    )
+    return result.data[0]
+
+
+async def get_subjects_by_org(org_id: str):
+    """Fetch all subjects in one organization with teacher info."""
+    result = (
+        supabase.table("subjects")
+        .select("*, teachers(full_name, email)")
+        .eq("org_id", org_id)
+        .execute()
+    )
+    return result.data
+
+
+async def get_subjects_by_teacher(teacher_id: str):
+    """Fetch subjects created by one teacher."""
+    result = (
+        supabase.table("subjects")
+        .select("*")
+        .eq("teacher_id", teacher_id)
+        .execute()
+    )
+    return result.data
+
+
+async def create_org_member(org_id: str, student_id: str):
+    """Create membership request row if not already present."""
+    existing = (
+        supabase.table("org_members")
+        .select("*")
+        .eq("org_id", org_id)
+        .eq("student_id", student_id)
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        return None
+
+    result = (
+        supabase.table("org_members")
+        .insert(
+            {
+                "org_id": org_id,
+                "student_id": student_id,
+                "status": "pending",
+            }
+        )
+        .execute()
+    )
+    return result.data[0]
+
+
+async def get_pending_members(org_id: str):
+    """Fetch pending org membership requests with student info."""
+    result = (
+        supabase.table("org_members")
+        .select("*, students(name, email)")
+        .eq("org_id", org_id)
+        .eq("status", "pending")
+        .execute()
+    )
+    return result.data
+
+
+async def update_member_status(member_id: str, status: str):
+    """Update membership decision status."""
+    from datetime import datetime
+
+    result = (
+        supabase.table("org_members")
+        .update(
+            {
+                "status": status,
+                "reviewed_at": datetime.now().isoformat(),
+            }
+        )
+        .eq("id", member_id)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_student_orgs(student_id: str):
+    """Fetch approved organizations for a student."""
+    result = (
+        supabase.table("org_members")
+        .select("*, organizations(id, name, invite_code)")
+        .eq("student_id", student_id)
+        .eq("status", "approved")
+        .execute()
+    )
+    return result.data
+
+
+async def enroll_student_in_subjects(student_id: str, org_id: str):
+    """Enroll approved student in all existing org subjects."""
+    subjects = await get_subjects_by_org(org_id)
+    for subject in subjects:
+        existing = (
+            supabase.table("subject_enrollments")
+            .select("*")
+            .eq("subject_id", subject["id"])
+            .eq("student_id", student_id)
+            .limit(1)
+            .execute()
+        )
+        if not existing.data:
+            (
+                supabase.table("subject_enrollments")
+                .insert(
+                    {
+                        "subject_id": subject["id"],
+                        "student_id": student_id,
+                    }
+                )
+                .execute()
+            )
+
+
+async def get_student_enrollments(student_id: str, org_id: str):
+    """Fetch student enrollments and related subject + teacher details."""
+    result = (
+        supabase.table("subject_enrollments")
+        .select("*, subjects(id, name, subject_code, teachers(full_name), org_id)")
+        .eq("student_id", student_id)
+        .execute()
+    )
+
+    rows = result.data or []
+    if not org_id:
+        return rows
+
+    return [
+        row
+        for row in rows
+        if isinstance(row.get("subjects"), dict)
+        and str(row["subjects"].get("org_id") or "") == str(org_id)
+    ]
