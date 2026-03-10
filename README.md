@@ -31,6 +31,15 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 uvicorn main:app --reload
 ```
 
+## Features
+
+- Student profiles stored in Supabase (create + fetch by ID)
+- PDF upload with RAG indexing (per-student FAISS vectorstore)
+- Chat over uploaded notes using context-aware Groq LLM
+- One-click notes generation from any uploaded PDF
+- Study memory with recent-session history and a personalized greeting
+- Voice support: speech-to-text (STT) and text-to-speech (TTS)
+
 ## Endpoints
 
 | Method | Endpoint | Purpose |
