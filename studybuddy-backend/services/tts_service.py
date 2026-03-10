@@ -1,19 +1,25 @@
-"""TTS service - ElevenLabs text-to-speech"""
+"""TTS service - Groq text-to-speech using Canopy Labs Orpheus"""
 import httpx
 
-from config import ELEVENLABS_API_KEY
+from config import GROQ_API_KEY
 
-TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
-MODEL_ID = "eleven_monolingual_v1"
+TTS_URL = "https://api.groq.com/openai/v1/audio/speech"
+TTS_MODEL = "canopylabs/orpheus-v1-english"
+TTS_VOICE = "autumn"  # Valid voices: autumn, diana, hannah, austin, daniel, ...
 
 
 def text_to_speech(text: str) -> bytes:
-    """Convert text to speech using ElevenLabs. Returns audio bytes (MP3)."""
+    """Convert text to speech using Groq Orpheus TTS. Returns WAV audio bytes."""
     headers = {
-        "xi-api-key": ELEVENLABS_API_KEY,
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
-    payload = {"text": text, "model_id": MODEL_ID}
+    payload = {
+        "model": TTS_MODEL,
+        "input": text,
+        "voice": TTS_VOICE,
+        "response_format": "wav",
+    }
 
     with httpx.Client() as client:
         response = client.post(

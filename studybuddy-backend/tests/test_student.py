@@ -1,12 +1,15 @@
 """Test POST /api/student/register"""
 import requests
 
+import uuid
+
 BASE_URL = "http://localhost:8000"
+unique_email = f"test_{uuid.uuid4().hex[:8]}@test.com"
 
 try:
     r = requests.post(
         f"{BASE_URL}/api/student/register",
-        json={"name": "Test User", "email": "test@test.com"},
+        json={"name": "Test User", "email": unique_email},
         timeout=10,
     )
     r.raise_for_status()
@@ -14,8 +17,8 @@ try:
     student_id = data.get("student_id")
     print(f"student_id: {student_id}")
     if student_id:
-        print("PASS ✅")
+        print("PASS ")
     else:
-        print("FAIL ❌ no student_id in response")
+        print("FAIL  no student_id in response")
 except Exception as e:
-    print(f"FAIL ❌ {e}")
+    print(f"FAIL  {e}")
