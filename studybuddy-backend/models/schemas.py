@@ -65,6 +65,11 @@ class FlashcardUpdateRequest(BaseModel):
     mastered: bool | None = None
 
 
+class FlashcardGenerateAnswerRequest(BaseModel):
+    subject: str | None = None
+    question: str
+
+
 class ScheduleEventCreateRequest(BaseModel):
     student_id: str
     title: str

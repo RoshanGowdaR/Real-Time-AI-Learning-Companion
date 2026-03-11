@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from routes import student, upload, chat, notes, voice, memory, study_data
+from routes import student, upload, chat, notes, voice, memory, study_data, emotion, org, exam
 
 app = FastAPI(title="StudyBuddy API")
 
@@ -36,6 +36,9 @@ app.include_router(notes.router, prefix="/api", tags=["notes"])
 app.include_router(voice.router, prefix="/api", tags=["voice"])
 app.include_router(memory.router, prefix="/api", tags=["memory"])
 app.include_router(study_data.router, prefix="/api", tags=["study-data"])
+app.include_router(emotion.router, prefix="/api", tags=["emotion"])
+app.include_router(org.router, prefix="/api", tags=["org"])
+app.include_router(exam.router, prefix="/api", tags=["exam"])
 
 
 @app.get("/")
