@@ -194,6 +194,16 @@ export const api = {
     return res.json()
   },
 
+  extractChatInfo: async (student_id, question) => {
+    const res = await fetch(`${BASE_URL}/api/chat/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ student_id, question }),
+    })
+    if (!res.ok) throw await parseError(res, "Extraction failed")
+    return res.json()
+  },
+
   getTalks: async (student_id, limit = 100) => {
     const res = await fetch(`${BASE_URL}/api/talks/${student_id}?limit=${limit}`)
     if (!res.ok) throw await parseError(res, "Failed to fetch talks")
@@ -590,6 +600,12 @@ export const api = {
     return res.json()
   },
 
+  getSubjectExamsAll: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/subject/${subjectId}/all`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch exams")
+    return res.json()
+  },
+
   getExamDetails: async (examId) => {
     const res = await fetch(`${BASE_URL}/api/exam/${examId}`)
     if (!res.ok) throw await parseError(res, "Failed to fetch exam details")
@@ -741,6 +757,14 @@ export const api = {
   getSubjectLeaderboard: async (subjectId) => {
     const res = await fetch(`${BASE_URL}/api/leaderboard/subject/${subjectId}`)
     if (!res.ok) throw await parseError(res, "Failed to fetch leaderboard")
+    return res.json()
+  },
+
+  deleteAnnouncement: async (announcementId, teacherId) => {
+    const res = await fetch(`${BASE_URL}/api/announcements/${announcementId}?teacher_id=${encodeURIComponent(teacherId)}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) throw await parseError(res, "Failed to delete announcement")
     return res.json()
   },
 }

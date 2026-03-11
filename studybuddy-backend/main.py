@@ -4,14 +4,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from routes import student, upload, chat, notes, voice, memory, study_data, emotion, org, exam
+from services.scheduler_job import start_scheduler
 
 app = FastAPI(title="StudyBuddy API")
 
 
 @app.on_event("startup")
-def startup():
+async def startup():
     print("StudyBuddy REST API is running")
     print("All routes loaded")
+    try:
+        start_scheduler()
+    except Exception as e:
+        print(f"Failed to start scheduler: {e}")
 
 
 @app.exception_handler(Exception)

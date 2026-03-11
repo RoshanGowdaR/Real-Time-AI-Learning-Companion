@@ -4,6 +4,9 @@ __pycache__
 *.pyc
 .env
 *.egg-info
+node_modules/
+package-lock.json
+package.json
 dist/
 build/
 uploads/*

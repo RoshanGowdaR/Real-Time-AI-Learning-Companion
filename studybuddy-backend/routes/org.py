@@ -655,3 +655,21 @@ async def get_org(org_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/announcements/{announcement_id}")
+async def delete_announcement(announcement_id: str, teacher_id: str):
+    try:
+        if not teacher_id:
+            raise HTTPException(status_code=400, detail="teacher_id is required")
+        ann = db.supabase.table("announcements").select("*").eq("id", announcement_id).execute()
+        if not ann.data:
+            raise HTTPException(status_code=404, detail="Announcement not found")
+        if ann.data[0].get("teacher_id") != teacher_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this announcement")
+        db.supabase.table("announcements").delete().eq("id", announcement_id).execute()
+        return {"deleted": True, "status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

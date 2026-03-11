@@ -2,6 +2,7 @@
 import json
 import re
 from typing import Optional, List
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -132,6 +133,13 @@ def _upsert_leaderboard(exam_id: str, subject_id: str, student_id: str, student_
         }).execute()
 
 
+def _require_uuid(value: str, field_name: str) -> str:
+    try:
+        return str(UUID(str(value)))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail=f"Invalid {field_name} format. Expected UUID.")
+
+
 # ─── Exam CRUD ────────────────────────────────────────────
 
 
@@ -140,8 +148,10 @@ async def create_exam(req: CreateExamRequest):
     if req.exam_type not in ("mcq", "written"):
         raise HTTPException(400, "exam_type must be 'mcq' or 'written'")
 
+    subject_id = _require_uuid(req.subject_id, "subject_id")
+
     payload = {
-        "subject_id": req.subject_id,
+        "subject_id": subject_id,
         "teacher_id": req.teacher_id,
         "title": req.title,
         "description": req.description or "",
@@ -160,6 +170,44 @@ async def create_exam(req: CreateExamRequest):
 
 @router.get("/exam/subject/{subject_id}")
 async def get_subject_exams(subject_id: str):
+    """Student-facing: returns only active exams with question counts."""
+    subject_id = _require_uuid(subject_id, "subject_id")
+
+    exams = (
+        supabase.table("exams")
+        .select("*")
+        .eq("subject_id", subject_id)
+        .eq("status", "active")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    result = []
+    for exam in exams:
+        if exam.get("exam_type") == "mcq":
+            qs = supabase.table("mcq_questions").select("id", count="exact").eq("exam_id", exam["id"]).execute()
+        else:
+            qs = supabase.table("written_questions").select("id", count="exact").eq("exam_id", exam["id"]).execute()
+        q_count = qs.count if qs.count is not None else len(qs.data or [])
+        result.append({
+            "id": exam["id"],
+            "title": exam["title"],
+            "exam_type": exam["exam_type"],
+            "status": exam["status"],
+            "duration_mins": exam["duration_mins"],
+            "total_marks": exam["total_marks"],
+            "closes_at": exam.get("closes_at"),
+            "question_count": q_count,
+        })
+    return {"exams": result}
+
+
+@router.get("/exam/subject/{subject_id}/all")
+async def get_all_subject_exams(subject_id: str):
+    """Teacher-facing: returns all exams regardless of status with submission + question counts."""
+    subject_id = _require_uuid(subject_id, "subject_id")
+
     exams = (
         supabase.table("exams")
         .select("*")
@@ -177,14 +225,11 @@ async def get_subject_exams(subject_id: str):
             .execute()
         )
         exam["submission_count"] = subs.count if subs.count is not None else len(subs.data or [])
-        # also count questions
         if exam.get("exam_type") == "mcq":
             qs = supabase.table("mcq_questions").select("id", count="exact").eq("exam_id", exam["id"]).execute()
-            exam["question_count"] = qs.count if qs.count is not None else len(qs.data or [])
         else:
             qs = supabase.table("written_questions").select("id", count="exact").eq("exam_id", exam["id"]).execute()
-            exam["question_count"] = qs.count if qs.count is not None else len(qs.data or [])
-
+        exam["question_count"] = qs.count if qs.count is not None else len(qs.data or [])
     return {"exams": exams}
 
 
@@ -225,6 +270,17 @@ async def get_exam_details(exam_id: str):
 async def update_exam_status(exam_id: str, req: ExamStatusRequest):
     if req.status not in ("active", "closed"):
         raise HTTPException(400, "status must be 'active' or 'closed'")
+
+    if req.status == "active":
+        exam_row = supabase.table("exams").select("exam_type").eq("id", exam_id).execute()
+        if not exam_row.data:
+            raise HTTPException(404, "Exam not found")
+        exam_type = exam_row.data[0].get("exam_type", "mcq")
+        table = "mcq_questions" if exam_type == "mcq" else "written_questions"
+        qs = supabase.table(table).select("id", count="exact").eq("exam_id", exam_id).execute()
+        q_count = qs.count if qs.count is not None else len(qs.data or [])
+        if q_count == 0:
+            raise HTTPException(400, "Add at least 1 question before activating exam")
 
     supabase.table("exams").update({"status": req.status}).eq("id", exam_id).execute()
 
@@ -832,6 +888,8 @@ async def get_exam_leaderboard(exam_id: str):
 
 @router.get("/leaderboard/subject/{subject_id}")
 async def get_subject_leaderboard(subject_id: str):
+    subject_id = _require_uuid(subject_id, "subject_id")
+
     # Get all exams for subject
     exams = (
         supabase.table("exams")

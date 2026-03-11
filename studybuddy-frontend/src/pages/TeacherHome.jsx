@@ -111,7 +111,7 @@ export default function TeacherHome() {
     setError('')
     try {
       const [examsRes, studentsRes, pendingRes, annRes] = await Promise.all([
-        api.getSubjectExams(subjectId),
+        api.getSubjectExamsAll(subjectId),
         api.getSubjectStudents(subjectId),
         api.getSubjectPending(subjectId),
         api.getAnnouncements(subjectId),
@@ -320,6 +320,14 @@ export default function TeacherHome() {
     finally { setPostingAnn(false) }
   }
 
+  const handleDeleteAnnouncement = async (announcementId) => {
+    try {
+      await api.deleteAnnouncement(announcementId, session.teacher_id)
+      setAnnouncements((prev) => prev.filter((a) => a.id !== announcementId))
+      showFeedback('Announcement deleted')
+    } catch (err) { setError(err.message) }
+  }
+
   /* ── Leaderboard ─────────────────────── */
 
   const loadExamLeaderboard = async (examId) => {
@@ -505,18 +513,39 @@ export default function TeacherHome() {
                             <div>
                               <h3 className="text-sm font-semibold text-white">{ex.title}</h3>
                               <p className="text-xs text-slate-400 mt-1">Type: {ex.exam_type?.toUpperCase()} · {ex.question_count || 0} questions · {ex.total_marks} marks</p>
+                              {(ex.question_count || 0) === 0 && <p className="text-xs text-red-400 mt-0.5">-- Add questions before activating</p>}
                               <p className="text-xs text-slate-400">Duration: {ex.duration_mins} mins</p>
                               {ex.closes_at && <p className="text-xs text-slate-400">Closes: {formatDate(ex.closes_at)}</p>}
-                              <p className="text-xs text-slate-400 mt-1">Submissions: {ex.submission_count || 0} students</p>
+                              {ex.submission_count != null && <p className="text-xs text-slate-400 mt-1">Submissions: {ex.submission_count} students</p>}
                             </div>
-                            <span className={`rounded-full px-2 py-0.5 text-[11px] ${STATUS_BADGE[ex.status] || STATUS_BADGE.draft}`}>{ex.status}</span>
+                            <div className="shrink-0 text-right">
+                              {ex.status === 'draft' && <span className="inline-block rounded-full bg-gray-700 px-2.5 py-0.5 text-[11px] text-gray-200">Draft — Not visible to students</span>}
+                              {ex.status === 'active' && <span className="inline-block rounded-full bg-emerald-900/40 px-2.5 py-0.5 text-[11px] text-emerald-300">Active — Students can attempt</span>}
+                              {ex.status === 'closed' && <span className="inline-block rounded-full bg-rose-900/40 px-2.5 py-0.5 text-[11px] text-rose-300">Closed</span>}
+                            </div>
                           </div>
                           <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <button onClick={() => loadSubmissions(ex)} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">View Submissions</button>
-                            <button onClick={() => { setActiveTab('leaderboard'); setLeaderboardTab('exam'); loadExamLeaderboard(ex.id) }} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">Leaderboard</button>
-                            {ex.status === 'draft' && <button onClick={() => handleExamStatusChange(ex.id, 'active')} className="rounded-md bg-emerald-600/80 px-2 py-1 text-xs text-white hover:bg-emerald-500">Activate</button>}
-                            {ex.status === 'active' && <button onClick={() => handleExamStatusChange(ex.id, 'closed')} className="rounded-md bg-amber-600/80 px-2 py-1 text-xs text-white hover:bg-amber-500">Close</button>}
-                            <button onClick={() => handleDeleteExam(ex.id)} className="rounded-md bg-rose-600/80 px-2 py-1 text-xs text-white hover:bg-rose-500">Delete</button>
+                            {ex.status === 'draft' && (
+                              <>
+                                <button onClick={() => { setCreatedExamId(ex.id); setExamForm({ ...examForm, exam_type: ex.exam_type }); setExamView('create'); setCreateStep(2); api.getExamDetails(ex.id).then((d) => setExamQuestions(d.questions || [])) }} className="rounded-md bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-500">+ Add Questions</button>
+                                <button onClick={() => handleExamStatusChange(ex.id, 'active')} disabled={(ex.question_count || 0) === 0} className="rounded-md bg-emerald-600/80 px-2 py-1 text-xs text-white hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed" title={(ex.question_count || 0) === 0 ? 'Add questions first' : ''}>Activate</button>
+                                <button onClick={() => handleDeleteExam(ex.id)} className="rounded-md bg-rose-600/80 px-2 py-1 text-xs text-white hover:bg-rose-500">Delete</button>
+                              </>
+                            )}
+                            {ex.status === 'active' && (
+                              <>
+                                <button onClick={() => loadSubmissions(ex)} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">View Submissions</button>
+                                <button onClick={() => { setActiveTab('leaderboard'); setLeaderboardTab('exam'); loadExamLeaderboard(ex.id) }} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">Leaderboard</button>
+                                <button onClick={() => handleExamStatusChange(ex.id, 'closed')} className="rounded-md bg-amber-600/80 px-2 py-1 text-xs text-white hover:bg-amber-500">Close</button>
+                              </>
+                            )}
+                            {ex.status === 'closed' && (
+                              <>
+                                <button onClick={() => loadSubmissions(ex)} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">View Submissions</button>
+                                <button onClick={() => { setActiveTab('leaderboard'); setLeaderboardTab('exam'); loadExamLeaderboard(ex.id) }} className="rounded-md bg-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-600">Leaderboard</button>
+                                <button onClick={() => handleDeleteExam(ex.id)} className="rounded-md bg-rose-600/80 px-2 py-1 text-xs text-white hover:bg-rose-500">Delete</button>
+                              </>
+                            )}
                           </div>
                         </article>
                       ))}
@@ -840,7 +869,12 @@ export default function TeacherHome() {
                         <article key={a.id} className="rounded-xl border border-[#272d47] bg-[#101426] p-4">
                           <div className="flex items-center justify-between gap-2">
                             <span className={`rounded-full px-2 py-0.5 text-xs ${a.tag === 'Important' ? 'bg-rose-900/40 text-rose-300' : a.tag === 'Assignment' ? 'bg-blue-900/40 text-blue-300' : 'bg-gray-700 text-gray-200'}`}>{a.tag || 'General'}</span>
-                            <span className="text-xs text-slate-500">{timeAgo(a.created_at)}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-500">{timeAgo(a.created_at)}</span>
+                              <button onClick={() => handleDeleteAnnouncement(a.id)} className="rounded bg-red-900/20 px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-900/40" title="Delete announcement">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            </div>
                           </div>
                           <h4 className="mt-2 text-sm font-semibold text-white">{a.title}</h4>
                           {a.body && <p className="mt-1 text-sm text-slate-300">{a.body}</p>}

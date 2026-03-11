@@ -10,6 +10,7 @@ import OrganizationLogin from './pages/OrganizationLogin'
 import TeacherHome from './pages/TeacherHome'
 import MCQExamRoom from './pages/MCQExamRoom'
 import WrittenExamRoom from './pages/WrittenExamRoom'
+import AuthCallback from './pages/AuthCallback'
 import { getTeacherSession } from './utils/teacherSession'
 import { getOrganizationSession } from './utils/organizationSession'
 
@@ -62,6 +63,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PortalSelect />} />
         <Route path="/student/login" element={<StudentPublicRoute><Landing /></StudentPublicRoute>} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/app" element={<StudentProtectedRoute><MainApp /></StudentProtectedRoute>} />
         <Route path="/app/organizations" element={<StudentOrgProtectedRoute><OrgsPage /></StudentOrgProtectedRoute>} />
         <Route path="/app/organizations/:subjectId" element={<StudentOrgProtectedRoute><OrgView /></StudentOrgProtectedRoute>} />
