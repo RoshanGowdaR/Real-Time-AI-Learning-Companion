@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import LoadingSpinner from '../components/LoadingSpinner'
 
-export default function Landing() {
-  const [mode, setMode] = useState('signup')
+export default function Landing({ onAuthSuccess }) {
+  const [mode, setMode] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,8 +12,12 @@ export default function Landing() {
   const navigate = useNavigate()
 
   const finishAuth = (res) => {
-    localStorage.setItem('student_id', res.student_id)
-    localStorage.setItem('student_name', res.name)
+    if (typeof onAuthSuccess === 'function') {
+      onAuthSuccess(res)
+    } else {
+      localStorage.setItem('student_id', res.student_id)
+      localStorage.setItem('student_name', res.name)
+    }
     navigate('/app')
   }
 
@@ -28,29 +32,27 @@ export default function Landing() {
     try {
       let res
       if (mode === 'signup') {
-        try {
-          res = await api.registerStudent(normalizedName, normalizedEmail)
-        } catch (signupErr) {
-          const message = (signupErr?.message || '').toLowerCase()
-          const accountExists =
-            message.includes('already registered') ||
-            message.includes('already exist') ||
-            message.includes('duplicate') ||
-            message.includes('unique')
-
-          if (!accountExists) throw signupErr
-
-          // Existing account path: switch UI mode and sign in directly.
-          setMode('login')
-          res = await api.loginStudent(normalizedEmail)
-        }
+        res = await api.registerStudent(normalizedName, normalizedEmail)
       } else {
         res = await api.loginStudent(normalizedEmail)
       }
 
       finishAuth(res)
     } catch (err) {
-      setError(err.message || 'Authentication failed. Please try again.')
+      const message = err?.message || 'Authentication failed. Please try again.'
+      const lowered = String(message).toLowerCase()
+
+      if (
+        mode === 'signup' &&
+        (lowered.includes('already registered') ||
+          lowered.includes('already exist') ||
+          lowered.includes('duplicate') ||
+          lowered.includes('unique'))
+      ) {
+        setError('This email already has an account. Please use Login tab.')
+      } else {
+        setError(message)
+      }
       console.error(err)
     } finally {
       setLoading(false)
@@ -69,6 +71,13 @@ export default function Landing() {
           </div>
           <h1 className="mt-4 text-3xl font-bold text-white">StudyBuddy</h1>
           <p className="mt-1 text-sm text-gray-400">Focused study space with AI guidance</p>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mt-4 rounded-lg border border-[#343b5a] bg-[#151a2f] px-3 py-2 text-xs text-slate-300 hover:border-indigo-400 hover:text-white"
+          >
+            Back To Portal Selection
+          </button>
         </div>
 
         <div className="mt-6 p-1 bg-[#0f1018] rounded-xl border border-[#1e1e2e] grid grid-cols-2 gap-1">
@@ -134,6 +143,7 @@ export default function Landing() {
               mode === 'signup' ? 'Create Account' : 'Continue to Study'
             )}
           </button>
+
         </form>
       </div>
     </div>

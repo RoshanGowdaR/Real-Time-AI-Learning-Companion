@@ -88,3 +88,28 @@ def generate_greeting(student_name: str, recent_sessions: list) -> str:
     messages = [("system", system), ("human", user_msg)]
     response = llm.invoke(messages)
     return response.content
+
+
+def generate_flashcard_answer(question: str, subject: str, context: str = "") -> str:
+    """Generate a concise flashcard answer, grounded by context when available."""
+    safe_subject = (subject or "General").strip() or "General"
+
+    system = (
+        "You are StudyBuddy Flashcard AI. Write a concise, exam-ready answer for a study flashcard.\n"
+        "Rules:\n"
+        "1. Keep answer short: 2-5 sentences, or brief bullet points when helpful.\n"
+        "2. Use simple, student-friendly language.\n"
+        "3. If context is provided, prioritize it.\n"
+        "4. If context is missing, rely on accurate general knowledge for the subject.\n"
+        "5. Do not include markdown headings or disclaimers.\n"
+    )
+
+    user_msg = (
+        f"Subject: {safe_subject}\n"
+        f"Question: {question.strip()}\n\n"
+        f"Context:\n{context.strip() if context.strip() else '[No uploaded context found]'}"
+    )
+
+    messages = [("system", system), ("human", user_msg)]
+    response = llm.invoke(messages)
+    return response.content
