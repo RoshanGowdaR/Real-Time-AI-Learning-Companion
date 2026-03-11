@@ -5,6 +5,7 @@ python-dotenv
 langchain
 langchain-community
 langchain-groq
+langchain-text-splitters
 faiss-cpu
 pymupdf
 sentence-transformers
