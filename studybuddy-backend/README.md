@@ -50,25 +50,73 @@ Reminder emails are sent through Gmail SMTP. Use a Google App Password for `SMTP
 - **Notes API**: Multi-strategy synthesis (PDF/Research/Web).
 - **Voice API**: Real-time STT/TTS processing.
 
-| POST | /api/flashcards | Create flashcard |
-| PATCH | /api/flashcards/{student_id}/{flashcard_id} | Update flashcard |
-| DELETE | /api/flashcards/{student_id}/{flashcard_id} | Delete flashcard |
-| GET | /api/flashcards/{student_id}/review-stats | Get review streak/history |
-| POST | /api/flashcards/{student_id}/review-stats/increment | Increment daily review count |
-| GET | /api/schedule/{student_id} | List custom schedule events |
-| POST | /api/schedule | Create schedule event |
-| DELETE | /api/schedule/{student_id}/{event_id} | Delete schedule event |
-| GET | /api/workspaces/{student_id} | List workspaces |
-| POST | /api/workspaces | Create workspace |
-| DELETE | /api/workspaces/{student_id}/{workspace_id} | Delete workspace |
-| GET | /api/workspaces/{student_id}/documents | List workspace-resource links |
-| POST | /api/workspaces/{student_id}/{workspace_id}/documents/{document_id} | Assign resource to workspace |
-| DELETE | /api/workspaces/{student_id}/{workspace_id}/documents/{document_id} | Remove resource from workspace |
-| POST | /api/notes/generate | Generate notes from PDF |
-| POST | /api/voice/stt | Speech-to-text (transcribe audio) |
-| POST | /api/voice/tts | Text-to-speech |
-| GET | /api/memory/{student_id} | Get greeting and recent sessions |
-| POST | /api/memory/session | Save study session |
+# API Documentation
+
+## Flashcards API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| POST | `/api/flashcards` | Create flashcard |
+| PATCH | `/api/flashcards/{student_id}/{flashcard_id}` | Update flashcard |
+| DELETE | `/api/flashcards/{student_id}/{flashcard_id}` | Delete flashcard |
+| GET | `/api/flashcards/{student_id}/review-stats` | Get review streak/history |
+| POST | `/api/flashcards/{student_id}/review-stats/increment` | Increment daily review count |
+
+---
+
+## Schedule API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/api/schedule/{student_id}` | List custom schedule events |
+| POST | `/api/schedule` | Create schedule event |
+| DELETE | `/api/schedule/{student_id}/{event_id}` | Delete schedule event |
+
+---
+
+## Workspaces API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/api/workspaces/{student_id}` | List workspaces |
+| POST | `/api/workspaces` | Create workspace |
+| DELETE | `/api/workspaces/{student_id}/{workspace_id}` | Delete workspace |
+
+---
+
+## Workspace Documents API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/api/workspaces/{student_id}/documents` | List workspace-resource links |
+| POST | `/api/workspaces/{student_id}/{workspace_id}/documents/{document_id}` | Assign resource to workspace |
+| DELETE | `/api/workspaces/{student_id}/{workspace_id}/documents/{document_id}` | Remove resource from workspace |
+
+---
+
+## Notes Generation API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| POST | `/api/notes/generate` | Generate notes from PDF |
+
+---
+
+## Voice API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| POST | `/api/voice/stt` | Speech-to-text (transcribe audio) |
+| POST | `/api/voice/tts` | Text-to-speech |
+
+---
+
+## Memory API
+
+| Method | Endpoint | Description |
+|------|------|------|
+| GET | `/api/memory/{student_id}` | Get greeting and recent sessions |
+| POST | `/api/memory/session` | Save study session |
 
 ## cURL Examples
 
