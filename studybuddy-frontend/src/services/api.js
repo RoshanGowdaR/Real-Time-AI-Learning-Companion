@@ -1,4 +1,45 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+function resolveRuntimeApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8000"
+  }
+
+  const host = window.location.hostname
+  const protocol = window.location.protocol || "http:"
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1"
+
+  if (isLocal || !host) {
+    // Use IPv4 explicitly to avoid localhost resolving to ::1 while backend listens on 127.0.0.1.
+    return "http://127.0.0.1:8000"
+  }
+
+  return `${protocol}//${host}:8000`
+}
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || resolveRuntimeApiBaseUrl()
+const LOCAL_BASE_FALLBACKS = ["http://127.0.0.1:8000", "http://localhost:8000"]
+
+async function fetchWithLocalFallback(path, init) {
+  const primaryUrl = `${BASE_URL}${path}`
+
+  try {
+    return await fetch(primaryUrl, init)
+  } catch {
+    const remainingBases = LOCAL_BASE_FALLBACKS.filter((base) => base !== BASE_URL)
+
+    for (const fallbackBase of remainingBases) {
+      try {
+        return await fetch(`${fallbackBase}${path}`, init)
+      } catch {
+        // Continue trying fallbacks.
+      }
+    }
+
+    throw new Error(
+      `Failed to reach backend API. Checked ${BASE_URL} and local fallbacks. ` +
+      "Ensure backend is running on port 8000 or set VITE_API_BASE_URL correctly."
+    )
+  }
+}
 
 function normalizeKnownErrorMessage(rawMessage) {
   const message = String(rawMessage || "").trim()
@@ -357,5 +398,349 @@ export const api = {
     })
     if (!res.ok) throw await parseError(res, "Session save failed")
     return res.json()
-  }
+  },
+
+  createOrg: async (name, description = "") => {
+    const res = await fetch(`${BASE_URL}/api/org/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to create organization")
+    return res.json()
+  },
+
+  orgAdminRegister: async ({ name, description = "", email, password }) => {
+    const res = await fetchWithLocalFallback('/api/org/admin/register', {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description, email, password }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to create organization admin account")
+    return res.json()
+  },
+
+  orgAdminLogin: async (email, password) => {
+    const res = await fetchWithLocalFallback('/api/org/admin/login', {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) throw await parseError(res, "Organization login failed")
+    return res.json()
+  },
+
+  registerTeacher: async ({ org_id, email, full_name, password, subject_name }) => {
+    const res = await fetch(`${BASE_URL}/api/org/register-teacher`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ org_id, email, full_name, password, subject_name }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to register teacher")
+    return res.json()
+  },
+
+  teacherLogin: async (email, password) => {
+    const res = await fetch(`${BASE_URL}/api/org/teacher/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) throw await parseError(res, "Teacher login failed")
+    return res.json()
+  },
+
+  deleteTeacher: async (org_id, teacher_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/teacher/${teacher_id}?org_id=${encodeURIComponent(org_id)}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) throw await parseError(res, "Failed to delete teacher")
+    return res.json()
+  },
+
+  joinSubject: async (subject_code, student_id) => {
+    const res = await fetch(`${BASE_URL}/api/subject/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject_code, student_id }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to request subject join")
+    return res.json()
+  },
+
+  getStudentSubjects: async (student_id) => {
+    const res = await fetch(`${BASE_URL}/api/subject/student/${student_id}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch student subjects")
+    return res.json()
+  },
+
+  getSubjectPending: async (subject_id) => {
+    const res = await fetch(`${BASE_URL}/api/subject/${subject_id}/pending`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch subject pending requests")
+    return res.json()
+  },
+
+  updateSubjectEnrollmentStatus: async (enrollment_id, status) => {
+    const res = await fetch(`${BASE_URL}/api/subject/enrollment/${enrollment_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to update enrollment status")
+    return res.json()
+  },
+
+  joinOrg: async (invite_code, student_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_code, student_id }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to join organization")
+    return res.json()
+  },
+
+  getOrgPending: async (org_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/${org_id}/pending`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch pending members")
+    return res.json()
+  },
+
+  updateOrgMemberStatus: async (member_id, status) => {
+    const res = await fetch(`${BASE_URL}/api/org/member/${member_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to update member status")
+    return res.json()
+  },
+
+  getStudentOrgs: async (student_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/student/${student_id}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch student organizations")
+    return res.json()
+  },
+
+  getOrgSubjects: async (org_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/${org_id}/subjects`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch organization subjects")
+    return res.json()
+  },
+
+  getOrgById: async (org_id) => {
+    const res = await fetch(`${BASE_URL}/api/org/${org_id}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch organization")
+    return res.json()
+  },
+
+  getAnnouncements: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/announcements/${subjectId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch announcements")
+    return res.json()
+  },
+
+  getAssignments: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/assignments/${subjectId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch assignments")
+    return res.json()
+  },
+
+  createAnnouncement: async ({ teacher_id, subject_id, title, body = "", tag = "General" }) => {
+    const res = await fetch(`${BASE_URL}/api/announcements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teacher_id, subject_id, title, body, tag }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to create announcement")
+    return res.json()
+  },
+
+  createAssignment: async ({ teacher_id, subject_id, title, description = "", due_date = null, max_score = 100 }) => {
+    const res = await fetch(`${BASE_URL}/api/assignments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teacher_id, subject_id, title, description, due_date, max_score }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to create assignment")
+    return res.json()
+  },
+
+  getSubjectStudents: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/org/subject/${subjectId}/students`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch subject students")
+    return res.json()
+  },
+
+  // ─── Exam Management ──────────────────────────────────
+
+  createExam: async (data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to create exam")
+    return res.json()
+  },
+
+  getSubjectExams: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/subject/${subjectId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch exams")
+    return res.json()
+  },
+
+  getExamDetails: async (examId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch exam details")
+    return res.json()
+  },
+
+  updateExamStatus: async (examId, status) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to update exam status")
+    return res.json()
+  },
+
+  deleteExam: async (examId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) throw await parseError(res, "Failed to delete exam")
+    return res.json()
+  },
+
+  // ─── Questions ─────────────────────────────────────────
+
+  addMCQQuestion: async (examId, data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/mcq/question`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to add question")
+    return res.json()
+  },
+
+  addMCQQuestionsBulk: async (examId, questions) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/mcq/questions/bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questions }),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to add questions")
+    return res.json()
+  },
+
+  generateMCQWithAI: async (examId, data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/mcq/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to generate questions")
+    return res.json()
+  },
+
+  deleteMCQQuestion: async (questionId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/mcq/question/${questionId}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) throw await parseError(res, "Failed to delete question")
+    return res.json()
+  },
+
+  addWrittenQuestion: async (examId, data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/written/question`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to add question")
+    return res.json()
+  },
+
+  deleteWrittenQuestion: async (questionId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/written/question/${questionId}`, {
+      method: "DELETE",
+    })
+    if (!res.ok) throw await parseError(res, "Failed to delete question")
+    return res.json()
+  },
+
+  // ─── Student Exam ─────────────────────────────────────
+
+  getAvailableExams: async (studentId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/student/${studentId}/available`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch available exams")
+    return res.json()
+  },
+
+  submitMCQExam: async (data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/submit/mcq`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to submit exam")
+    return res.json()
+  },
+
+  submitWrittenExam: async (data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/submit/written`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to submit exam")
+    return res.json()
+  },
+
+  getExamResult: async (studentId, examId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/student/${studentId}/result/${examId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch result")
+    return res.json()
+  },
+
+  // ─── Teacher Grading ──────────────────────────────────
+
+  getExamSubmissions: async (examId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/${examId}/submissions`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch submissions")
+    return res.json()
+  },
+
+  getSubmissionDetail: async (submissionId) => {
+    const res = await fetch(`${BASE_URL}/api/exam/submission/${submissionId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch submission detail")
+    return res.json()
+  },
+
+  gradeSubmission: async (submissionId, data) => {
+    const res = await fetch(`${BASE_URL}/api/exam/submission/${submissionId}/grade`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw await parseError(res, "Failed to submit grades")
+    return res.json()
+  },
+
+  // ─── Leaderboard ──────────────────────────────────────
+
+  getExamLeaderboard: async (examId) => {
+    const res = await fetch(`${BASE_URL}/api/leaderboard/exam/${examId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch leaderboard")
+    return res.json()
+  },
+
+  getSubjectLeaderboard: async (subjectId) => {
+    const res = await fetch(`${BASE_URL}/api/leaderboard/subject/${subjectId}`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch leaderboard")
+    return res.json()
+  },
 }

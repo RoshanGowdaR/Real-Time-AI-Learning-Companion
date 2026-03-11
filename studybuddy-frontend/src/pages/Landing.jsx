@@ -71,6 +71,13 @@ export default function Landing({ onAuthSuccess }) {
           </div>
           <h1 className="mt-4 text-3xl font-bold text-white">StudyBuddy</h1>
           <p className="mt-1 text-sm text-gray-400">Focused study space with AI guidance</p>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="mt-4 rounded-lg border border-[#343b5a] bg-[#151a2f] px-3 py-2 text-xs text-slate-300 hover:border-indigo-400 hover:text-white"
+          >
+            Back To Portal Selection
+          </button>
         </div>
 
         <div className="mt-6 p-1 bg-[#0f1018] rounded-xl border border-[#1e1e2e] grid grid-cols-2 gap-1">
@@ -136,6 +143,7 @@ export default function Landing({ onAuthSuccess }) {
               mode === 'signup' ? 'Create Account' : 'Continue to Study'
             )}
           </button>
+
         </form>
       </div>
     </div>

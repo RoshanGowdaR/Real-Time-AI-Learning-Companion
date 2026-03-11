@@ -10,3 +10,4 @@ page.insert_text((72, 72), "This is a sample PDF for StudyBuddy tests. It contai
 doc.save(path)
 doc.close()
 print(f"Created {path}")
+

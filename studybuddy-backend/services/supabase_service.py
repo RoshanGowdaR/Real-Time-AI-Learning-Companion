@@ -6,6 +6,38 @@ from config import SUPABASE_URL, SUPABASE_ANON_KEY
 supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 
+def _is_missing_table_error(exc: Exception) -> bool:
+    """Detect PostgREST missing-table errors so callers can degrade gracefully."""
+    message = str(exc).lower()
+    return "pgrst205" in message or "could not find the table" in message
+
+
+def _is_missing_subject_enrollment_columns_error(exc: Exception) -> bool:
+    """Detect schema mismatch when new enrollment status columns are not present yet."""
+    message = str(exc).lower()
+    if "subject_enrollments" not in message:
+        return False
+    return (
+        "status" in message
+        or "requested_at" in message
+        or "reviewed_at" in message
+    )
+
+
+def _teacher_name(teacher_field) -> str:
+    """Normalize embedded teacher relation payload into a single display name."""
+    if isinstance(teacher_field, list):
+        if not teacher_field:
+            return "Unknown"
+        first = teacher_field[0] if isinstance(teacher_field[0], dict) else None
+        return first.get("full_name", "Unknown") if first else "Unknown"
+
+    if isinstance(teacher_field, dict):
+        return teacher_field.get("full_name", "Unknown")
+
+    return "Unknown"
+
+
 def create_student(name: str, email: str):
     """Insert into students table, return row"""
     result = supabase.table("students").insert({"name": name, "email": email}).execute()
@@ -462,6 +494,30 @@ async def create_org(name: str, description: str, invite_code: str):
     return result.data[0]
 
 
+async def create_org_admin(
+    name: str,
+    description: str,
+    invite_code: str,
+    admin_email: str,
+    password_hash: str,
+):
+    """Create one organization row with admin credentials."""
+    result = (
+        supabase.table("organizations")
+        .insert(
+            {
+                "name": name,
+                "description": description,
+                "invite_code": invite_code,
+                "admin_email": admin_email,
+                "password_hash": password_hash,
+            }
+        )
+        .execute()
+    )
+    return result.data[0]
+
+
 async def get_org_by_invite_code(code: str):
     """Fetch organization by invite code."""
     result = (
@@ -480,6 +536,18 @@ async def get_org_by_id(org_id: str):
         supabase.table("organizations")
         .select("*")
         .eq("id", org_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_org_by_admin_email(email: str):
+    """Fetch organization by admin email."""
+    result = (
+        supabase.table("organizations")
+        .select("*")
+        .eq("admin_email", email)
         .limit(1)
         .execute()
     )
@@ -566,6 +634,88 @@ async def get_subjects_by_teacher(teacher_id: str):
     return result.data
 
 
+async def get_subject_by_id(subject_id: str):
+    """Fetch subject by id."""
+    result = (
+        supabase.table("subjects")
+        .select("*")
+        .eq("id", subject_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def get_subject_by_code(subject_code: str):
+    """Fetch subject by subject code."""
+    normalized_code = (subject_code or "").strip().upper()
+    result = (
+        supabase.table("subjects")
+        .select("*")
+        .eq("subject_code", normalized_code)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def create_announcement(subject_id: str, teacher_id: str, title: str, body: str, tag: str):
+    """Create one announcement row."""
+    try:
+        result = (
+            supabase.table("announcements")
+            .insert(
+                {
+                    "subject_id": subject_id,
+                    "teacher_id": teacher_id,
+                    "title": title,
+                    "body": body,
+                    "tag": tag,
+                }
+            )
+            .execute()
+        )
+        return result.data[0]
+    except Exception as exc:
+        if _is_missing_table_error(exc):
+            raise RuntimeError(
+                "Announcements storage is not set up yet. Run studybuddy-backend/supabase_schema.sql "
+                "(or studybuddy-backend/supabase_patch_org_tables.sql) in Supabase SQL Editor, then retry."
+            ) from exc
+        raise
+
+
+async def create_assignment(
+    subject_id: str,
+    teacher_id: str,
+    title: str,
+    description: str,
+    due_date: str | None,
+    max_score: int,
+):
+    """Create one assignment row."""
+    payload = {
+        "subject_id": subject_id,
+        "teacher_id": teacher_id,
+        "title": title,
+        "description": description,
+        "max_score": max_score,
+    }
+    if due_date:
+        payload["due_date"] = due_date
+
+    try:
+        result = supabase.table("assignments").insert(payload).execute()
+        return result.data[0]
+    except Exception as exc:
+        if _is_missing_table_error(exc):
+            raise RuntimeError(
+                "Assignments storage is not set up yet. Run studybuddy-backend/supabase_schema.sql "
+                "(or studybuddy-backend/supabase_patch_org_tables.sql) in Supabase SQL Editor, then retry."
+            ) from exc
+        raise
+
+
 async def create_org_member(org_id: str, student_id: str):
     """Create membership request row if not already present."""
     existing = (
@@ -593,6 +743,70 @@ async def create_org_member(org_id: str, student_id: str):
     return result.data[0]
 
 
+async def create_subject_enrollment_request(subject_id: str, student_id: str):
+    """Create or reopen a subject enrollment request and return (row, action)."""
+    from datetime import datetime
+
+    now_iso = datetime.now().isoformat()
+
+    try:
+        existing = (
+            supabase.table("subject_enrollments")
+            .select("*")
+            .eq("subject_id", subject_id)
+            .eq("student_id", student_id)
+            .limit(1)
+            .execute()
+        )
+
+        if existing.data:
+            row = existing.data[0]
+            current_status = str(row.get("status") or "").lower()
+
+            if current_status == "approved":
+                return row, "already_approved"
+
+            if current_status == "pending":
+                return row, "already_pending"
+
+            updated = (
+                supabase.table("subject_enrollments")
+                .update(
+                    {
+                        "status": "pending",
+                        "requested_at": now_iso,
+                        "reviewed_at": None,
+                        "enrolled_at": None,
+                    }
+                )
+                .eq("id", row["id"])
+                .execute()
+            )
+            return updated.data[0], "reopened"
+
+        created = (
+            supabase.table("subject_enrollments")
+            .insert(
+                {
+                    "subject_id": subject_id,
+                    "student_id": student_id,
+                    "status": "pending",
+                    "requested_at": now_iso,
+                }
+            )
+            .execute()
+        )
+        return created.data[0], "created"
+    except Exception as exc:
+        if _is_missing_subject_enrollment_columns_error(exc):
+            raise RuntimeError(
+                "Subject enrollment status columns are not set up yet. "
+                "Run studybuddy-backend/supabase_schema.sql "
+                "(or studybuddy-backend/supabase_patch_org_tables.sql) in Supabase SQL Editor, then retry."
+            ) from exc
+        raise
+
+
 async def get_pending_members(org_id: str):
     """Fetch pending org membership requests with student info."""
     result = (
@@ -603,6 +817,60 @@ async def get_pending_members(org_id: str):
         .execute()
     )
     return result.data
+
+
+async def get_pending_subject_enrollments(subject_id: str):
+    """Fetch pending enrollment requests for one subject with student info."""
+    try:
+        result = (
+            supabase.table("subject_enrollments")
+            .select(
+                "id, subject_id, student_id, status, requested_at, reviewed_at, "
+                "students(id, name, email), "
+                "subjects(id, name, subject_code, org_id, teacher_id, organizations(id, name), teachers(id, full_name, email))"
+            )
+            .eq("subject_id", subject_id)
+            .eq("status", "pending")
+            .order("requested_at", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        if _is_missing_subject_enrollment_columns_error(exc):
+            return []
+        raise
+
+
+async def get_org_pending_subject_enrollments(org_id: str):
+    """Fetch pending enrollment requests for all subjects in one organization."""
+    subjects_result = (
+        supabase.table("subjects")
+        .select("id")
+        .eq("org_id", org_id)
+        .execute()
+    )
+    subject_ids = [row.get("id") for row in (subjects_result.data or []) if row.get("id")]
+    if not subject_ids:
+        return []
+
+    try:
+        result = (
+            supabase.table("subject_enrollments")
+            .select(
+                "id, subject_id, student_id, status, requested_at, reviewed_at, "
+                "students(id, name, email), "
+                "subjects(id, name, subject_code, org_id, teacher_id, organizations(id, name), teachers(id, full_name, email))"
+            )
+            .in_("subject_id", subject_ids)
+            .eq("status", "pending")
+            .order("requested_at", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        if _is_missing_subject_enrollment_columns_error(exc):
+            return []
+        raise
 
 
 async def update_member_status(member_id: str, status: str):
@@ -623,6 +891,47 @@ async def update_member_status(member_id: str, status: str):
     return result.data[0] if result.data else None
 
 
+async def get_subject_enrollment_by_id(enrollment_id: str):
+    """Fetch subject enrollment row by id."""
+    result = (
+        supabase.table("subject_enrollments")
+        .select("*")
+        .eq("id", enrollment_id)
+        .limit(1)
+        .execute()
+    )
+    return result.data[0] if result.data else None
+
+
+async def update_subject_enrollment_status(enrollment_id: str, status: str):
+    """Approve/reject one subject enrollment request."""
+    from datetime import datetime
+
+    now_iso = datetime.now().isoformat()
+    payload = {
+        "status": status,
+        "reviewed_at": now_iso,
+    }
+    payload["enrolled_at"] = now_iso if status == "approved" else None
+
+    try:
+        result = (
+            supabase.table("subject_enrollments")
+            .update(payload)
+            .eq("id", enrollment_id)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+    except Exception as exc:
+        if _is_missing_subject_enrollment_columns_error(exc):
+            raise RuntimeError(
+                "Subject enrollment status columns are not set up yet. "
+                "Run studybuddy-backend/supabase_schema.sql "
+                "(or studybuddy-backend/supabase_patch_org_tables.sql) in Supabase SQL Editor, then retry."
+            ) from exc
+        raise
+
+
 async def get_student_orgs(student_id: str):
     """Fetch approved organizations for a student."""
     result = (
@@ -635,8 +944,31 @@ async def get_student_orgs(student_id: str):
     return result.data
 
 
+async def get_student_subject_enrollments(student_id: str):
+    """Fetch all subject enrollments for one student with subject/org/teacher context."""
+    try:
+        result = (
+            supabase.table("subject_enrollments")
+            .select(
+                "id, subject_id, student_id, status, requested_at, reviewed_at, enrolled_at, "
+                "subjects(id, name, subject_code, org_id, organizations(id, name), teachers(id, full_name, email))"
+            )
+            .eq("student_id", student_id)
+            .order("requested_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        if _is_missing_subject_enrollment_columns_error(exc):
+            return []
+        raise
+
+
 async def enroll_student_in_subjects(student_id: str, org_id: str):
     """Enroll approved student in all existing org subjects."""
+    from datetime import datetime
+
+    now_iso = datetime.now().isoformat()
     subjects = await get_subjects_by_org(org_id)
     for subject in subjects:
         existing = (
@@ -654,6 +986,10 @@ async def enroll_student_in_subjects(student_id: str, org_id: str):
                     {
                         "subject_id": subject["id"],
                         "student_id": student_id,
+                        "status": "approved",
+                        "requested_at": now_iso,
+                        "reviewed_at": now_iso,
+                        "enrolled_at": now_iso,
                     }
                 )
                 .execute()
@@ -679,3 +1015,92 @@ async def get_student_enrollments(student_id: str, org_id: str):
         if isinstance(row.get("subjects"), dict)
         and str(row["subjects"].get("org_id") or "") == str(org_id)
     ]
+
+
+async def delete_teacher_and_subjects(org_id: str, teacher_id: str):
+    """Delete a teacher and all subjects owned by that teacher in the organization."""
+    subject_rows = (
+        supabase.table("subjects")
+        .select("id")
+        .eq("org_id", org_id)
+        .eq("teacher_id", teacher_id)
+        .execute()
+    )
+    subject_ids = [row.get("id") for row in (subject_rows.data or []) if row.get("id")]
+
+    deleted_subjects = 0
+    if subject_ids:
+        deleted_subject_rows = (
+            supabase.table("subjects")
+            .delete()
+            .in_("id", subject_ids)
+            .execute()
+        )
+        deleted_subjects = len(deleted_subject_rows.data or [])
+
+    deleted_teacher_rows = (
+        supabase.table("teachers")
+        .delete()
+        .eq("id", teacher_id)
+        .eq("org_id", org_id)
+        .execute()
+    )
+
+    if not deleted_teacher_rows.data:
+        return None
+
+    return {
+        "teacher": deleted_teacher_rows.data[0],
+        "deleted_subjects": deleted_subjects,
+        "subject_ids": subject_ids,
+    }
+
+
+async def get_announcements_by_subject(subject_id: str):
+    """Fetch announcements for one subject ordered by newest first."""
+    try:
+        result = (
+            supabase.table("announcements")
+            .select("id, subject_id, teacher_id, title, body, tag, created_at, teachers(full_name)")
+            .eq("subject_id", subject_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        rows = result.data or []
+        announcements = []
+        for row in rows:
+            announcements.append(
+                {
+                    "id": row.get("id"),
+                    "subject_id": row.get("subject_id"),
+                    "teacher_id": row.get("teacher_id"),
+                    "title": row.get("title") or "Announcement",
+                    "body": row.get("body") or "",
+                    "tag": row.get("tag") or "General",
+                    "created_at": row.get("created_at"),
+                    "teacher_name": _teacher_name(row.get("teachers")),
+                }
+            )
+        return announcements
+    except Exception as exc:
+        if _is_missing_table_error(exc):
+            return []
+        raise
+
+
+async def get_assignments_by_subject(subject_id: str):
+    """Fetch assignments for one subject ordered by due date."""
+    try:
+        result = (
+            supabase.table("assignments")
+            .select("id, subject_id, teacher_id, title, description, due_date, max_score, created_at")
+            .eq("subject_id", subject_id)
+            .order("due_date", desc=False)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        if _is_missing_table_error(exc):
+            return []
+        raise

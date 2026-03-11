@@ -98,6 +98,8 @@ create table if not exists organizations (
     name text not null,
     description text,
     invite_code text unique not null,
+    admin_email text,
+    password_hash text,
     created_at timestamp with time zone default now()
 );
 
@@ -133,8 +135,32 @@ create table if not exists subject_enrollments (
     id uuid primary key default gen_random_uuid(),
     subject_id uuid references subjects(id) on delete cascade,
     student_id uuid references students(id) on delete cascade,
+    status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
+    requested_at timestamp with time zone default now(),
+    reviewed_at timestamp with time zone,
     enrolled_at timestamp with time zone default now(),
     unique(subject_id, student_id)
+);
+
+create table if not exists announcements (
+    id uuid primary key default gen_random_uuid(),
+    subject_id uuid references subjects(id) on delete cascade,
+    teacher_id uuid references teachers(id) on delete set null,
+    title text not null,
+    body text default '',
+    tag text not null default 'General' check (tag in ('General', 'Assignment', 'Important')),
+    created_at timestamp with time zone default now()
+);
+
+create table if not exists assignments (
+    id uuid primary key default gen_random_uuid(),
+    subject_id uuid references subjects(id) on delete cascade,
+    teacher_id uuid references teachers(id) on delete set null,
+    title text not null,
+    description text default '',
+    due_date timestamp with time zone,
+    max_score integer default 100,
+    created_at timestamp with time zone default now()
 );
 
 create index if not exists idx_documents_student_id on documents(student_id);
@@ -146,6 +172,7 @@ create index if not exists idx_schedule_events_student_date_time on schedule_eve
 create index if not exists idx_emotion_logs_student_detected_at on emotion_logs(student_id, detected_at desc);
 create index if not exists idx_workspace_documents_student_workspace on workspace_documents(student_id, workspace_id);
 create index if not exists idx_organizations_invite_code on organizations(invite_code);
+create unique index if not exists idx_organizations_admin_email_lower on organizations(lower(admin_email));
 create index if not exists idx_teachers_org_id on teachers(org_id);
 create index if not exists idx_teachers_email on teachers(email);
 create index if not exists idx_subjects_org_id on subjects(org_id);
@@ -154,6 +181,9 @@ create index if not exists idx_subjects_code on subjects(subject_code);
 create index if not exists idx_org_members_org_status on org_members(org_id, status);
 create index if not exists idx_org_members_student_status on org_members(student_id, status);
 create index if not exists idx_subject_enrollments_student on subject_enrollments(student_id);
+create index if not exists idx_subject_enrollments_subject_status on subject_enrollments(subject_id, status);
+create index if not exists idx_announcements_subject_created on announcements(subject_id, created_at desc);
+create index if not exists idx_assignments_subject_due on assignments(subject_id, due_date);
 
 -- Ensure PostgREST schema cache refreshes immediately after DDL.
 select pg_notify('pgrst', 'reload schema');

@@ -5,6 +5,7 @@ import WorkspaceView from '../components/WorkspaceView'
 import LibraryView from '../components/LibraryView'
 import FlashcardsView from '../components/FlashcardsView'
 import ScheduleView from '../components/ScheduleView'
+import OrganizationsView from '../components/OrganizationsView'
 import VoiceOrb from '../components/VoiceOrb'
 import FaceDetectionPip from '../components/FaceDetectionPip'
 import { startFaceDetection, stopFaceDetection } from '../utils/faceDetection'
@@ -13,6 +14,7 @@ import { api } from '../services/api'
 
 const TAB_ITEMS = [
   { id: 'home', label: 'Home' },
+  { id: 'organizations', label: 'My Classes' },
   { id: 'library', label: 'Library' },
   { id: 'flashcards', label: 'Flashcards' },
   { id: 'schedule', label: 'Schedule' },
@@ -88,6 +90,7 @@ export default function MainApp() {
   const [activeTab, setActiveTab] = useState('home')
   const [greeting, setGreeting] = useState('')
   const [documents, setDocuments] = useState([])
+
   const [sessions, setSessions] = useState([])
   const [speakText, setSpeakText] = useState('')
   const captureVideoRef = useRef(null)
@@ -298,6 +301,8 @@ export default function MainApp() {
     } else {
       console.error('Talk history fetch failed', talksResult.reason)
     }
+
+
   }, [student.id, syncWorkspaceStates])
 
   useEffect(() => {
@@ -694,6 +699,8 @@ export default function MainApp() {
     setCustomEvents((prev) => prev.filter((event) => String(event.id) !== String(eventId)))
   }
 
+
+
   const handleEmotionDetected = useCallback((emotion, confidence) => {
     const normalizedEmotion = String(emotion || 'no_face').toLowerCase()
     const numericConfidence = Number(confidence || 0)
@@ -843,13 +850,9 @@ export default function MainApp() {
             Logout
           </button>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-full bg-[#161726] border border-[#2c2d42] px-3 py-1 text-sm text-gray-300 hover:text-white transition-all"
-          >
+          <div className="rounded-full bg-[#161726] border border-[#2c2d42] px-3 py-1 text-sm text-gray-300">
             {studentName}
-          </button>
+          </div>
         </div>
       </header>
 
@@ -872,6 +875,12 @@ export default function MainApp() {
             onOpenWorkspace={handleOpenWorkspace}
             onCreateWorkspace={handleCreateWorkspace}
             onDeleteWorkspace={handleDeleteWorkspace}
+          />
+        )}
+
+        {activeTab === 'organizations' && (
+          <OrganizationsView
+            studentName={studentName}
           />
         )}
 
