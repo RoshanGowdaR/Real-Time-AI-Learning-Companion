@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { api } from '../services/api'
+import { voiceKeywords } from '../utils/voiceKeywords'
 
 const MAX_RECORD_MS = 4500
 
@@ -161,7 +162,8 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
 
   const handleSTT = async (blob) => {
     try {
-      const { text } = await api.speechToText(blob)
+      const response = await api.speechToText(blob)
+      const text = response.text || response.transcript || ''
       const question = String(text || '').trim()
 
       if (!question) {
@@ -171,10 +173,38 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
         return
       }
 
-      // Step 2: Chat
+      // Check for schedule keywords
+      const lowered = question.toLowerCase()
+      const isScheduleAction = voiceKeywords.schedule.some(kw => lowered.includes(kw))
+
+      if (isScheduleAction) {
+        setIsProcessing(true)
+        try {
+          // 1. Extract info from LLM
+          const { info } = await api.extractChatInfo(studentId, question)
+          // 2. Save to schedule
+          await api.createScheduleEvent(studentId, {
+            title: info.title,
+            subject: info.subject,
+            date: info.date,
+            startTime: info.start_time,
+            endTime: info.end_time,
+            priority: info.priority
+          })
+          
+          const successMsg = `Perfect! I've scheduled "${info.title}" for ${info.date} at ${info.start_time}.`
+          handleTTS(successMsg)
+          onResult({ question, answer: successMsg, chatId: 'action-schedule' })
+          return
+        } catch (err) {
+          console.error("Schedule extraction/save failed", err)
+        }
+      }
+
+      // Default: Chat
       const { answer, chat_id } = await api.chatQuery(studentId, question, 'voice')
       onResult({ question, answer, chatId: chat_id })
-      // Step 3: Speak back
+      // Speaking back
       handleTTS(answer)
     } catch (err) {
       console.error("STT/Chat failed", err)

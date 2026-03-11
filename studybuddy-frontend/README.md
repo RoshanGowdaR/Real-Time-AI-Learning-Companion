@@ -27,12 +27,27 @@ A modern, high-performance web interface for AI-assisted study, built with React
 # Install Dependencies
 npm install
 
+# Configure local environment
+cp .env.example .env.local
+
 # Dev Server (Vite)
 npm run dev
 
 # Production Build
 npm run build
 ```
+
+Add these keys in `.env.local`:
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+```
+
+For Google sign-in, configure Supabase Auth:
+- Enable Google provider in Supabase Auth -> Providers.
+- Add `http://localhost:5173/auth/callback` to redirect URLs (and your production callback URL when deployed).
 
 ### Integration Points
 - **Supabase Integration**: Synchronizes student profiles and interactions.

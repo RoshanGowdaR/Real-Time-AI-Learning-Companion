@@ -35,10 +35,14 @@ pip install -r requirements.txt
 GROQ_API_KEY=gsk_...
 SUPABASE_URL=https://...
 SUPABASE_ANON_KEY=...
+SMTP_EMAIL=your_gmail@gmail.com
+SMTP_PASSWORD=your_google_app_password
 
 # Production Server
 uvicorn main:app --host 127.0.0.1 --port 8000 --workers 4
 ```
+
+Reminder emails are sent through Gmail SMTP. Use a Google App Password for `SMTP_PASSWORD` (normal account passwords are blocked by Google for SMTP).
 
 ## FEATURE SET & ENDPOINTS
 - **Student API**: Management of profiles and session persistence.
@@ -162,6 +166,12 @@ Create talk (chat text):
 
 ```powershell
 curl.exe -X POST "$BASE/api/chat" -H "Content-Type: application/json" -d "{\"student_id\":\"$STUDENT_ID\",\"question\":\"Summarize my PDF\",\"source\":\"text\"}"
+```
+
+Extract schedule data from natural language:
+
+```powershell
+curl.exe -X POST "$BASE/api/chat/extract" -H "Content-Type: application/json" -d "{\"student_id\":\"$STUDENT_ID\",\"question\":\"Set math revision tomorrow at 6 PM\"}"
 ```
 
 List talks:

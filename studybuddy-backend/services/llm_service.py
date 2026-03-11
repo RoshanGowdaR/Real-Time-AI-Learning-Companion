@@ -1,4 +1,5 @@
 """LLM service - Groq Chat for notes, Q&A, greetings"""
+import json
 from langchain_groq import ChatGroq
 
 from config import GROQ_API_KEY
@@ -7,6 +8,50 @@ llm = ChatGroq(
     api_key=GROQ_API_KEY,
     model="llama-3.3-70b-versatile",
 )
+
+
+def extract_info_llm(text: str) -> dict:
+    """Extract schedule event info from text using LLM."""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    current_date = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+    default_end_time = (now + timedelta(hours=1)).strftime("%H:%M")
+
+    system = (
+        "You are StudyBuddy — a scheduling assistant. "
+        "Extract event details from the user's text into a strict JSON format.\n"
+        f"CONTEXT: Today is {current_date}, current time is {current_time}.\n"
+        "FIELDS:\n"
+        "- title: short descriptive string (e.g., 'Math Revision')\n"
+        "- subject: string (e.g., 'Math', 'Physics' or 'General')\n"
+        "- date: YYYY-MM-DD format. If they say 'tomorrow', calculate based on today.\n"
+        "- start_time: HH:MM format (24h). If not mentioned, default to 1 hour from now.\n"
+        "- end_time: HH:MM format (24h). If not mentioned, default to 1 hour after start_time.\n"
+        "- priority: 'normal' or 'high'. Default 'normal'.\n"
+        "Output ONLY valid JSON."
+    )
+    messages = [("system", system), ("human", text)]
+    try:
+        response = llm.invoke(messages)
+        content = response.content.strip()
+        # strip markdown code blocks if present
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:].strip()
+            content = content.strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error extracting info: {e}")
+        return {
+            "title": "New Event",
+            "subject": "General",
+            "date": current_date,
+            "start_time": current_time,
+            "end_time": default_end_time,
+            "priority": "normal"
+        }
 
 
 def generate_notes(text: str) -> str:

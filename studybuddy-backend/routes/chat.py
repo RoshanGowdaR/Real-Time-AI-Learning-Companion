@@ -3,10 +3,29 @@ from fastapi import APIRouter, HTTPException, Query
 
 from models.schemas import ChatRequest
 from services import supabase_service
-from services.llm_service import answer_question
+from services.llm_service import answer_question, extract_info_llm
 from services.rag_service import query_rag
 
 router = APIRouter()
+
+
+@router.post("/chat/extract")
+async def extract_chat_info(body: ChatRequest):
+    """Extract schedule info from chat text using LLM."""
+    try:
+        question = body.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Question is required")
+
+        info = extract_info_llm(question)
+        return {
+            "info": info,
+            "status": "success",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat")

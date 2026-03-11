@@ -11,6 +11,27 @@ router = APIRouter()
 async def register_student(body: StudentRequest):
     """Register a new student."""
     try:
+        # Check if student already exists for Google login convenience
+        try:
+            existing = supabase_service.get_student_by_email(body.email)
+            return {
+                "student_id": existing["id"],
+                "name": existing["name"],
+                "email": existing.get("email"),
+                "status": "success",
+            }
+        except Exception as lookup_error:
+            # Supabase single() raises when email is not found; allow create flow only for that case.
+            lookup_message = str(lookup_error).lower()
+            not_found = (
+                "0 rows" in lookup_message
+                or "no rows" in lookup_message
+                or "json object requested" in lookup_message
+                or "pgrst116" in lookup_message
+            )
+            if not not_found:
+                raise
+
         row = supabase_service.create_student(
             name=body.name,
             email=body.email,
@@ -18,6 +39,7 @@ async def register_student(body: StudentRequest):
         return {
             "student_id": row["id"],
             "name": row["name"],
+            "email": row["email"],
             "status": "success",
         }
     except Exception as e:
