@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Prefer environment variables; fallback values keep local development working.
 const supabaseUrl =
 	import.meta.env.VITE_SUPABASE_URL ||
 	'https://qaiutofpzcwuufwcpboy.supabase.co'

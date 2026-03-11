@@ -6,6 +6,8 @@ class ChatRequest(BaseModel):
     student_id: str
     question: str
     source: str = "text"
+    client_local_date: str | None = None
+    client_local_time: str | None = None
 
 
 class ChatResponse(BaseModel):
