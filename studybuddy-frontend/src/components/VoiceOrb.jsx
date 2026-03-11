@@ -4,6 +4,97 @@ import { voiceKeywords } from '../utils/voiceKeywords'
 
 const MAX_RECORD_MS = 4500
 
+function normalizeTime(value, fallback) {
+  const raw = String(value || '').trim().toLowerCase().replace(/\./g, '')
+  if (!raw) return fallback
+
+  const direct24 = raw.match(/^(\d{1,2}):(\d{2})$/)
+  if (direct24) {
+    const hours = Number(direct24[1])
+    const minutes = Number(direct24[2])
+    if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+    }
+  }
+
+  const match = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/)
+  if (!match) return fallback
+
+  let hours = Number(match[1])
+  const minutes = Number(match[2] || 0)
+  const meridian = match[3] || ''
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes) || minutes < 0 || minutes > 59) {
+    return fallback
+  }
+
+  if (meridian === 'pm' && hours < 12) hours += 12
+  if (meridian === 'am' && hours === 12) hours = 0
+
+  if (hours < 0 || hours > 23) return fallback
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+}
+
+function addOneHour(time24) {
+  const [h, m] = String(time24 || '').split(':').map((part) => Number(part))
+  if (Number.isNaN(h) || Number.isNaN(m)) return '10:00'
+
+  const date = new Date()
+  date.setHours(h, m, 0, 0)
+  date.setHours(date.getHours() + 1)
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatLocalDate(dateObj) {
+  return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
+}
+
+function normalizeScheduleInfo(rawInfo, sourceText = '') {
+  const info = rawInfo && typeof rawInfo === 'object' ? rawInfo : {}
+  const now = new Date()
+  const defaultDate = formatLocalDate(now)
+  const plusOneHour = new Date(now.getTime() + (60 * 60 * 1000))
+  const defaultStart = `${String(plusOneHour.getHours()).padStart(2, '0')}:${String(plusOneHour.getMinutes()).padStart(2, '0')}`
+
+  const startTime = normalizeTime(info.start_time ?? info.startTime, defaultStart)
+  let endTime = normalizeTime(info.end_time ?? info.endTime, addOneHour(startTime))
+  if (endTime === startTime) {
+    endTime = addOneHour(startTime)
+  }
+
+  const rawSubject = String(info.subject || '').trim()
+  const subject = rawSubject || 'General'
+  const rawTitle = String(info.title || '').trim()
+  const title = rawTitle || `${subject} Study Session`
+  let date = /^\d{4}-\d{2}-\d{2}$/.test(String(info.date || '').trim())
+    ? String(info.date).trim()
+    : defaultDate
+
+  const loweredSource = String(sourceText || '').toLowerCase()
+  if (/\bday\s+after\s+tomorrow\b/.test(loweredSource)) {
+    const d = new Date(now)
+    d.setDate(now.getDate() + 2)
+    date = formatLocalDate(d)
+  } else if (/\btomorrow\b/.test(loweredSource)) {
+    const d = new Date(now)
+    d.setDate(now.getDate() + 1)
+    date = formatLocalDate(d)
+  } else if (/\btoday\b|\btonight\b/.test(loweredSource)) {
+    date = formatLocalDate(now)
+  }
+
+  const priority = String(info.priority || '').toLowerCase() === 'high' ? 'high' : 'normal'
+
+  return {
+    title,
+    subject,
+    date,
+    start_time: startTime,
+    end_time: endTime,
+    priority,
+  }
+}
+
 function MicIcon({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -25,7 +116,7 @@ function SpeakerIcon({ className }) {
   )
 }
 
-export default function VoiceOrb({ studentId, onResult, speakText }) {
+export default function VoiceOrb({ studentId, onResult, speakText, onScheduleCreated }) {
   const WAVE_BARS = [8, 14, 22, 16, 10, 18, 26, 20, 12, 18, 24, 17, 9]
   const [isRecording, setIsRecording] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
@@ -181,9 +272,11 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
         setIsProcessing(true)
         try {
           // 1. Extract info from LLM
-          const { info } = await api.extractChatInfo(studentId, question)
+          const { info: rawInfo } = await api.extractChatInfo(studentId, question)
+          const info = normalizeScheduleInfo(rawInfo, question)
+
           // 2. Save to schedule
-          await api.createScheduleEvent(studentId, {
+          const created = await api.createScheduleEvent(studentId, {
             title: info.title,
             subject: info.subject,
             date: info.date,
@@ -191,13 +284,23 @@ export default function VoiceOrb({ studentId, onResult, speakText }) {
             endTime: info.end_time,
             priority: info.priority
           })
+
+          if (created?.event && typeof onScheduleCreated === 'function') {
+            onScheduleCreated(created.event)
+          }
           
           const successMsg = `Perfect! I've scheduled "${info.title}" for ${info.date} at ${info.start_time}.`
+          setVoiceError('')
           handleTTS(successMsg)
           onResult({ question, answer: successMsg, chatId: 'action-schedule' })
           return
         } catch (err) {
           console.error("Schedule extraction/save failed", err)
+          const fallback = 'I could not schedule that yet. Please say it like: schedule Math tomorrow at 6 PM.'
+          setVoiceError(err?.message || 'Failed to save schedule event.')
+          handleTTS(fallback)
+          onResult({ question, answer: fallback, chatId: 'action-schedule-failed' })
+          return
         }
       }
 

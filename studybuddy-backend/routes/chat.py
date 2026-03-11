@@ -17,7 +17,11 @@ async def extract_chat_info(body: ChatRequest):
         if not question:
             raise HTTPException(status_code=400, detail="Question is required")
 
-        info = extract_info_llm(question)
+        info = extract_info_llm(
+            question,
+            client_local_date=body.client_local_date,
+            client_local_time=body.client_local_time,
+        )
         return {
             "info": info,
             "status": "success",
