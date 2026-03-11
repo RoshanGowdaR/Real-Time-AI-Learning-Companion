@@ -1,0 +1,264 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../services/api'
+import {
+  clearTeacherSession,
+  getTeacherSession,
+  setTeacherActiveSubject,
+} from '../utils/teacherSession'
+
+export default function TeacherHome() {
+  const navigate = useNavigate()
+  const [session, setSession] = useState(() => getTeacherSession())
+  const [org, setOrg] = useState(null)
+  const [pendingMembers, setPendingMembers] = useState([])
+  const [loadingPending, setLoadingPending] = useState(false)
+  const [activeMemberAction, setActiveMemberAction] = useState('')
+  const [error, setError] = useState('')
+
+  const subjects = useMemo(() => {
+    return Array.isArray(session?.subjects) ? session.subjects : []
+  }, [session])
+
+  const activeSubject = useMemo(() => {
+    if (subjects.length === 0) return null
+    const activeId = String(session?.active_subject_id || '')
+    return subjects.find((item) => String(item.id) === activeId) || subjects[0]
+  }, [subjects, session])
+
+  useEffect(() => {
+    if (!session?.teacher_id) {
+      navigate('/teacher/login')
+      return
+    }
+
+    if (subjects.length > 1 && !activeSubject?.id) {
+      navigate('/teacher/subjects')
+      return
+    }
+
+    const loadOrg = async () => {
+      if (!session?.org_id) return
+      try {
+        const orgRes = await api.getOrgById(session.org_id)
+        setOrg(orgRes)
+      } catch (err) {
+        setError(err.message || 'Could not load organization details.')
+      }
+    }
+
+    loadOrg()
+  }, [session, navigate, subjects, activeSubject])
+
+  useEffect(() => {
+    const subjectId = activeSubject?.id
+    if (!subjectId) {
+      setPendingMembers([])
+      return
+    }
+
+    const loadPending = async () => {
+      setLoadingPending(true)
+      try {
+        const res = await api.getSubjectPending(subjectId)
+        setPendingMembers(Array.isArray(res?.members) ? res.members : [])
+      } catch (err) {
+        setError(err.message || 'Could not load pending requests.')
+        setPendingMembers([])
+      } finally {
+        setLoadingPending(false)
+      }
+    }
+
+    loadPending()
+  }, [activeSubject])
+
+  const handleSubjectChange = (subjectId) => {
+    setTeacherActiveSubject(subjectId)
+    setSession(getTeacherSession())
+    setError('')
+  }
+
+  const handlePendingStatus = async (enrollmentId, status) => {
+    const actionKey = `${enrollmentId}:${status}`
+    setActiveMemberAction(actionKey)
+    setError('')
+
+    try {
+      await api.updateSubjectEnrollmentStatus(enrollmentId, status)
+      const refreshed = await api.getSubjectPending(activeSubject?.id)
+      setPendingMembers(Array.isArray(refreshed?.members) ? refreshed.members : [])
+    } catch (err) {
+      setError(err.message || 'Could not update enrollment status.')
+    } finally {
+      setActiveMemberAction('')
+    }
+  }
+
+  const handleLogout = () => {
+    clearTeacherSession()
+    setSession(null)
+    navigate('/teacher/login')
+  }
+
+  if (!session) return null
+
+  return (
+    <div className="min-h-screen bg-[#090b14] p-4 md:p-6">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <header className="rounded-2xl border border-[#242a44] bg-[linear-gradient(120deg,#11152f_0%,#0f1326_55%,#0b1020_100%)] px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-indigo-300">Teacher Portal</p>
+              <h1 className="mt-1 text-2xl font-semibold text-white">Welcome, {session.full_name || 'Teacher'}</h1>
+              <p className="text-sm text-slate-300 mt-1">Use credentials provided by your organization.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {subjects.length > 1 && (
+                <select
+                  value={String(activeSubject?.id || '')}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                  className="rounded-lg border border-[#343b5a] bg-[#161b32] px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {subjects.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.subject_code})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="rounded-lg border border-[#343b5a] bg-[#161b32] px-3 py-2 text-xs text-slate-100 hover:border-indigo-400"
+              >
+                Portal Selection
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-lg bg-rose-600/80 px-3 py-2 text-xs text-white hover:bg-rose-500"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {error && (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            {error}
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <article className="rounded-2xl border border-[#272d47] bg-[#101426] p-4">
+            <h2 className="text-sm font-semibold text-white">Teacher Account</h2>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Name</span>
+                <span className="text-slate-100">{session.full_name || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Email</span>
+                <span className="text-slate-100">{session.email || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Teacher ID</span>
+                <span className="text-slate-100">{session.teacher_id || 'N/A'}</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-[#272d47] bg-[#101426] p-4">
+            <h2 className="text-sm font-semibold text-white">Active Subject</h2>
+            {activeSubject ? (
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Subject</span>
+                  <span className="text-slate-100">{activeSubject.name || 'N/A'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Code</span>
+                  <span className="text-slate-100">{activeSubject.subject_code || 'N/A'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Assigned Subjects</span>
+                  <span className="text-slate-100">{subjects.length}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No subject assigned yet.</p>
+            )}
+          </article>
+
+          <article className="rounded-2xl border border-[#272d47] bg-[#101426] p-4 md:col-span-2">
+            <h2 className="text-sm font-semibold text-white">Organization</h2>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Name</span>
+                <span className="text-slate-100">{org?.name || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Invite Code</span>
+                <span className="text-slate-100">{org?.invite_code || 'N/A'}</span>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-[#272d47] bg-[#101426] p-4 md:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">Pending Subject Join Requests</h2>
+              <p className="text-xs text-slate-400">{pendingMembers.length} pending</p>
+            </div>
+
+            {loadingPending ? (
+              <p className="mt-3 text-sm text-slate-400">Loading pending requests...</p>
+            ) : pendingMembers.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No pending requests for this subject.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {pendingMembers.map((member) => {
+                  const approveKey = `${member.enrollment_id}:approved`
+                  const rejectKey = `${member.enrollment_id}:rejected`
+
+                  return (
+                    <article key={member.enrollment_id} className="rounded-lg border border-[#313959] bg-[#141b35] p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">{member?.student?.name || 'Student'}</p>
+                          <p className="text-xs text-slate-300">{member?.student?.email || 'N/A'}</p>
+                          <p className="text-[11px] text-slate-500 mt-1">Requested: {member.requested_at || 'N/A'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePendingStatus(member.enrollment_id, 'approved')}
+                            disabled={activeMemberAction === approveKey || activeMemberAction === rejectKey}
+                            className="rounded-md bg-emerald-600/80 px-2.5 py-1.5 text-xs text-white hover:bg-emerald-500 disabled:opacity-60"
+                          >
+                            {activeMemberAction === approveKey ? 'Approving...' : 'Approve'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePendingStatus(member.enrollment_id, 'rejected')}
+                            disabled={activeMemberAction === approveKey || activeMemberAction === rejectKey}
+                            className="rounded-md bg-rose-600/80 px-2.5 py-1.5 text-xs text-white hover:bg-rose-500 disabled:opacity-60"
+                          >
+                            {activeMemberAction === rejectKey ? 'Rejecting...' : 'Reject'}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </article>
+        </div>
+      </div>
+    </div>
+  )
+}

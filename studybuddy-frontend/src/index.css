@@ -27,6 +27,102 @@
   background-size: 24px 24px;
 }
 
+@keyframes portal-grid-shift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 160px 120px, 160px 120px;
+  }
+}
+
+@keyframes portal-orb-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-6%, -2%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(8%, 6%, 0) scale(1.12);
+  }
+}
+
+@keyframes portal-orb-drift-b {
+  0%,
+  100% {
+    transform: translate3d(4%, -4%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-10%, 4%, 0) scale(1.08);
+  }
+}
+
+@keyframes portal-orb-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(5%, -7%, 0) scale(1.14);
+  }
+}
+
+.portal-scene {
+  isolation: isolate;
+}
+
+.portal-motion-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(86, 102, 248, 0.22), transparent 35%),
+    radial-gradient(circle at 84% 22%, rgba(22, 163, 154, 0.14), transparent 32%),
+    radial-gradient(circle at 50% 85%, rgba(79, 70, 229, 0.1), transparent 36%);
+  pointer-events: none;
+}
+
+.portal-motion-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.28;
+  animation: portal-grid-shift 26s linear infinite;
+  pointer-events: none;
+}
+
+.portal-motion-orb {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 9999px;
+  filter: blur(38px);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.portal-motion-orb--a {
+  left: -100px;
+  top: 120px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.95), rgba(55, 48, 163, 0.25));
+  animation: portal-orb-drift-a 13s ease-in-out infinite;
+}
+
+.portal-motion-orb--b {
+  right: -120px;
+  top: 80px;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.85), rgba(15, 118, 110, 0.22));
+  animation: portal-orb-drift-b 16s ease-in-out infinite;
+}
+
+.portal-motion-orb--c {
+  left: 36%;
+  bottom: -160px;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.82), rgba(49, 46, 129, 0.22));
+  animation: portal-orb-drift-c 18s ease-in-out infinite;
+}
+
 @keyframes voice-wave-bar-idle {
   0%,
   100% {
