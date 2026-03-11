@@ -110,6 +110,13 @@ async function parseError(res, fallbackMessage) {
   }
 }
 
+function getClientLocalDateTime() {
+  const now = new Date()
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+  const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+  return { date, time }
+}
+
 export const api = {
   registerStudent: async (name, email) => {
     const res = await fetch(`${BASE_URL}/api/student/register`, {
@@ -195,10 +202,17 @@ export const api = {
   },
 
   extractChatInfo: async (student_id, question) => {
+    const { date, time } = getClientLocalDateTime()
+
     const res = await fetch(`${BASE_URL}/api/chat/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ student_id, question }),
+      body: JSON.stringify({
+        student_id,
+        question,
+        client_local_date: date,
+        client_local_time: time,
+      }),
     })
     if (!res.ok) throw await parseError(res, "Extraction failed")
     return res.json()

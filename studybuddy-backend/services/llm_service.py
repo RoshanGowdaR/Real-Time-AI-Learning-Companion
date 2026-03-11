@@ -1,22 +1,214 @@
 """LLM service - Groq Chat for notes, Q&A, greetings"""
 import json
+import re
+from datetime import datetime, timedelta
+
 from langchain_groq import ChatGroq
 
 from config import GROQ_API_KEY
 
+# LangChain Groq client used for both study chat and structured extraction flows.
 llm = ChatGroq(
     api_key=GROQ_API_KEY,
     model="llama-3.3-70b-versatile",
 )
 
 
-def extract_info_llm(text: str) -> dict:
+def _safe_string(value, fallback=""):
+    text = str(value or "").strip()
+    return text or fallback
+
+
+def _extract_relative_day_offset(source_text: str):
+    lowered = str(source_text or "").lower()
+
+    if re.search(r"\bday\s+after\s+tomorrow\b", lowered):
+        return 2
+
+    if re.search(r"\btomorrow\b", lowered):
+        return 1
+
+    if re.search(r"\btoday\b|\btonight\b", lowered):
+        return 0
+
+    return None
+
+
+def _resolve_client_now(client_local_date: str | None, client_local_time: str | None):
+    date_text = str(client_local_date or "").strip()
+    if not date_text:
+        return None
+
+    parsed_date = None
+    date_formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+    ]
+    for fmt in date_formats:
+        try:
+            parsed_date = datetime.strptime(date_text, fmt).date()
+            break
+        except ValueError:
+            continue
+
+    if parsed_date is None:
+        return None
+
+    normalized_time = _normalize_time(str(client_local_time or ""), "")
+    if normalized_time:
+        try:
+            parsed_time = datetime.strptime(normalized_time, "%H:%M").time()
+        except ValueError:
+            parsed_time = datetime.now().time().replace(second=0, microsecond=0)
+    else:
+        parsed_time = datetime.now().time().replace(second=0, microsecond=0)
+
+    return datetime.combine(parsed_date, parsed_time)
+
+
+def _normalize_priority(value):
+    return "high" if str(value or "").strip().lower() == "high" else "normal"
+
+
+def _normalize_date(raw_date: str, base_now: datetime) -> str:
+    text = str(raw_date or "").strip().lower()
+    if not text:
+        return base_now.strftime("%Y-%m-%d")
+
+    if text == "today":
+        return base_now.strftime("%Y-%m-%d")
+
+    if text == "tomorrow":
+        return (base_now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    date_formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+    ]
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    return base_now.strftime("%Y-%m-%d")
+
+
+def _normalize_time(raw_time: str, fallback_time: str) -> str:
+    text = str(raw_time or "").strip().lower().replace(".", "")
+    if not text:
+        return fallback_time
+
+    direct_formats = [
+        "%H:%M",
+        "%H",
+        "%I:%M %p",
+        "%I %p",
+    ]
+    for fmt in direct_formats:
+        try:
+            return datetime.strptime(text, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+
+    match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", text)
+    if not match:
+        return fallback_time
+
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    meridian = (match.group(3) or "").lower()
+
+    if meridian == "pm" and hour < 12:
+        hour += 12
+    elif meridian == "am" and hour == 12:
+        hour = 0
+
+    if hour > 23 or minute > 59:
+        return fallback_time
+
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _plus_one_hour(time_24h: str) -> str:
+    try:
+        parsed = datetime.strptime(time_24h, "%H:%M")
+        return (parsed + timedelta(hours=1)).strftime("%H:%M")
+    except ValueError:
+        return "10:00"
+
+
+def _extract_json_payload(content: str):
+    normalized = content.strip()
+    if normalized.startswith("```"):
+        normalized = normalized.split("```", maxsplit=2)[1]
+        if normalized.lstrip().startswith("json"):
+            normalized = normalized.lstrip()[4:]
+        normalized = normalized.strip()
+
+    try:
+        return json.loads(normalized)
+    except Exception:
+        pass
+
+    # If model adds explanation text around JSON, extract first object block.
+    match = re.search(r"\{[\s\S]*\}", normalized)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            pass
+
+    return {}
+
+
+def _sanitize_schedule_info(raw_info: dict, source_text: str, base_now: datetime) -> dict:
+    info = raw_info if isinstance(raw_info, dict) else {}
+
+    default_start = (base_now + timedelta(hours=1)).strftime("%H:%M")
+    start_time = _normalize_time(info.get("start_time") or info.get("startTime"), default_start)
+    end_time = _normalize_time(info.get("end_time") or info.get("endTime"), _plus_one_hour(start_time))
+    if end_time == start_time:
+        end_time = _plus_one_hour(start_time)
+
+    subject = _safe_string(info.get("subject"), "General")
+    if subject.lower() in {"this", "that", "subject", "session", "study"}:
+        subject = "General"
+
+    raw_title = _safe_string(info.get("title"))
+    title = raw_title if raw_title else f"{subject} Study Session"
+    if len(title) > 120:
+        title = title[:120].rstrip()
+
+    relative_day_offset = _extract_relative_day_offset(source_text)
+    if relative_day_offset is not None:
+        resolved_date = (base_now + timedelta(days=relative_day_offset)).strftime("%Y-%m-%d")
+    else:
+        resolved_date = _normalize_date(info.get("date"), base_now)
+
+    return {
+        "title": title,
+        "subject": subject,
+        "date": resolved_date,
+        "start_time": start_time,
+        "end_time": end_time,
+        "priority": _normalize_priority(info.get("priority")),
+    }
+
+
+def extract_info_llm(
+    text: str,
+    client_local_date: str | None = None,
+    client_local_time: str | None = None,
+) -> dict:
     """Extract schedule event info from text using LLM."""
-    from datetime import datetime, timedelta
-    now = datetime.now()
+    now = _resolve_client_now(client_local_date, client_local_time) or datetime.now()
     current_date = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
-    default_end_time = (now + timedelta(hours=1)).strftime("%H:%M")
 
     system = (
         "You are StudyBuddy — a scheduling assistant. "
@@ -34,24 +226,12 @@ def extract_info_llm(text: str) -> dict:
     messages = [("system", system), ("human", text)]
     try:
         response = llm.invoke(messages)
-        content = response.content.strip()
-        # strip markdown code blocks if present
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:].strip()
-            content = content.strip()
-        return json.loads(content)
+        content = str(response.content or "")
+        parsed = _extract_json_payload(content)
+        return _sanitize_schedule_info(parsed, text, now)
     except Exception as e:
         print(f"Error extracting info: {e}")
-        return {
-            "title": "New Event",
-            "subject": "General",
-            "date": current_date,
-            "start_time": current_time,
-            "end_time": default_end_time,
-            "priority": "normal"
-        }
+        return _sanitize_schedule_info({}, text, now)
 
 
 def generate_notes(text: str) -> str:

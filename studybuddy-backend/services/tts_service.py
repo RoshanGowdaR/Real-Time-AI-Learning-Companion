@@ -3,6 +3,7 @@ import httpx
 
 from config import GROQ_API_KEY
 
+# Groq OpenAI-compatible speech endpoint.
 TTS_URL = "https://api.groq.com/openai/v1/audio/speech"
 TTS_MODEL = "canopylabs/orpheus-v1-english"
 TTS_VOICE = "autumn"  # Valid voices: autumn, diana, hannah, austin, daniel, ...

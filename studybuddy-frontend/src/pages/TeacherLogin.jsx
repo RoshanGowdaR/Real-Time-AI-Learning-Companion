@@ -57,7 +57,7 @@ export default function TeacherLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-[#090b14] px-4 py-8">
+    <div className="min-h-screen bg-[#090b14] px-4 py-8 flex items-center justify-center">
       <div className="mx-auto w-full max-w-2xl rounded-2xl border border-[#21253a] bg-[#0f1221] p-6 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>

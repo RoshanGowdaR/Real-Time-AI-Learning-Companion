@@ -63,6 +63,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<PortalSelect />} />
         <Route path="/student/login" element={<StudentPublicRoute><Landing /></StudentPublicRoute>} />
+        {/* OAuth callback route finalizes student session after provider redirect. */}
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/app" element={<StudentProtectedRoute><MainApp /></StudentProtectedRoute>} />
         <Route path="/app/organizations" element={<StudentOrgProtectedRoute><OrgsPage /></StudentOrgProtectedRoute>} />
