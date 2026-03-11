@@ -63,6 +63,7 @@ export default function Landing({ onAuthSuccess }) {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true)
+      // Supabase starts provider auth and redirects back to /auth/callback.
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

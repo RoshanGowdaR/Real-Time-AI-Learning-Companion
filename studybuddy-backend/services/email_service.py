@@ -34,6 +34,7 @@ def send_reminder_email(to_email: str, student_name: str, event_title: str, even
     msg.attach(MIMEText(html, "html"))
 
     try:
+      # Gmail SMTP typically requires an App Password (not the account password).
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.sendmail(SMTP_EMAIL, to_email, msg.as_string())

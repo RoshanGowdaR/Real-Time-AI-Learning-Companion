@@ -5,6 +5,7 @@ import httpx
 
 from config import GROQ_API_KEY
 
+# Groq OpenAI-compatible Whisper endpoint.
 WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 MODEL = "whisper-large-v3"
 

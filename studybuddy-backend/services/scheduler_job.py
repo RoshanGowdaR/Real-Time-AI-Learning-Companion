@@ -70,6 +70,7 @@ async def check_and_send_reminders():
                     continue
 
                 diff_minutes = (event_dt - now).total_seconds() / 60
+                # Trigger only for events approximately 30 minutes away.
                 if not (25 <= diff_minutes <= 31):
                     continue
 
@@ -90,6 +91,7 @@ async def check_and_send_reminders():
         except Exception as e:
             print(f"Scheduler error: {e}")
 
+        # Poll every 5 minutes.
         await asyncio.sleep(300)
 
 

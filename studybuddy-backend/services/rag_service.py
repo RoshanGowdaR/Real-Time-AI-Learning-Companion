@@ -11,6 +11,7 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
+# Downloads/caches the sentence-transformers model (via HuggingFace) on first run.
 embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP

@@ -4,6 +4,7 @@ from langchain_groq import ChatGroq
 
 from config import GROQ_API_KEY
 
+# LangChain Groq client used for both study chat and structured extraction flows.
 llm = ChatGroq(
     api_key=GROQ_API_KEY,
     model="llama-3.3-70b-versatile",
