@@ -201,14 +201,59 @@ export default function VoiceOrb({
   }, [])
 
   // ─── Browser TTS fallback ───
+// Clean text for speech: strip markdown syntax, '#' headers, bullet marks, and code blocks
+function cleanTextForSpeech(text) {
+  if (!text) return ''
+  let t = String(text)
+
+  // Remove code blocks
+  t = t.replace(/```[\s\S]*?```/g, '')
+
+  // Remove markdown headers: #, ##, ###, #### at start of lines
+  t = t.replace(/(^|\n)\s*#+\s*/g, '$1')
+
+  // Remove any remaining '#' symbols (e.g., #tag, standalone hashtags)
+  t = t.replace(/#+/g, '')
+
+  // Remove markdown links [text](url) -> text
+  t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+
+  // Remove markdown images ![alt](url)
+  t = t.replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+
+  // Remove bold / italics
+  t = t.replace(/(\*\*|__)(.*?)\1/g, '$2')
+  t = t.replace(/(\*|_)(.*?)\1/g, '$2')
+
+  // Remove inline backticks
+  t = t.replace(/`([^`]+)`/g, '$1')
+
+  // Remove list bullet markers (- , * , + , • ) at line starts
+  t = t.replace(/(^|\n)\s*[-*+•]\s+/g, '$1')
+
+  // Collapse multiple newlines into a natural pause
+  t = t.replace(/\n{2,}/g, '. ')
+  t = t.replace(/\n/g, ' ')
+
+  // Normalize whitespace
+  t = t.replace(/[ \t]+/g, ' ')
+
+  return t.trim()
+}
+
   const speakWithBrowser = useCallback((text) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       setIsSpeaking(false)
       return
     }
+    const sanitized = cleanTextForSpeech(text)
+    if (!sanitized) {
+      setIsSpeaking(false)
+      return
+    }
     try {
       window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
+      const utterance = new SpeechSynthesisUtterance(sanitized)
       utterance.rate = 1.05
       utterance.pitch = 1.0
       const voices = window.speechSynthesis.getVoices()
@@ -230,10 +275,10 @@ export default function VoiceOrb({
   // ─── Server TTS with browser fallback ───
   const handleTTS = useCallback(async (text) => {
     if (!text) return
-    const trimmedText = String(text || '').trim()
-    if (!trimmedText) return
+    const sanitized = cleanTextForSpeech(text)
+    if (!sanitized) return
 
-    const ttsText = trimmedText.length > 1000 ? `${trimmedText.slice(0, 1000)}...` : trimmedText
+    const ttsText = sanitized.length > 1000 ? `${sanitized.slice(0, 1000)}...` : sanitized
     setIsSpeaking(true)
     try {
       const audioUrl = await api.textToSpeech(ttsText)

@@ -1,6 +1,7 @@
 """TTS service - Groq text-to-speech with seamless Edge-TTS neural fallback"""
 import asyncio
 import logging
+import re
 import httpx
 
 from config import get_next_groq_api_key
@@ -13,6 +14,48 @@ TTS_MODEL = "canopylabs/orpheus-v1-english"
 TTS_VOICE = "autumn"
 MAX_TTS_CHARS = 1200
 FALLBACK_VOICE = "en-US-AriaNeural"
+
+
+def clean_text_for_tts(text: str) -> str:
+    """Clean markdown artifacts, headers, '#' tags, and symbols so TTS speaks naturally."""
+    if not text:
+        return ""
+
+    t = str(text)
+
+    # Remove code blocks ```...```
+    t = re.sub(r"```[\s\S]*?```", "", t)
+
+    # Strip markdown headers (e.g. "### 📄 Answer", "#### 1. Identify")
+    t = re.sub(r"(?m)^\s*#+\s*", "", t)
+
+    # Remove any remaining '#' symbols (e.g., #tag, standalone hashtags)
+    t = re.sub(r"#+", "", t)
+
+    # Remove markdown links: [label](url) -> label
+    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)
+
+    # Remove images: ![alt](url) -> ""
+    t = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", t)
+
+    # Remove bold / italics
+    t = re.sub(r"(\*\*|__)(.*?)\1", r"\2", t)
+    t = re.sub(r"(\*|_)(.*?)\1", r"\2", t)
+
+    # Remove inline backticks
+    t = re.sub(r"`([^`]+)`", r"\1", t)
+
+    # Remove list bullet markers (- , * , + , • ) at line starts
+    t = re.sub(r"(?m)^\s*[-*+•]\s+", "", t)
+
+    # Collapse multiple newlines into a natural pause/period
+    t = re.sub(r"\n{2,}", ". ", t)
+    t = re.sub(r"\n", " ", t)
+
+    # Normalize multiple whitespace
+    t = re.sub(r"[ \t]+", " ", t)
+
+    return t.strip()
 
 
 async def _generate_edge_tts(text: str) -> bytes:
@@ -32,7 +75,7 @@ async def text_to_speech_async(text: str) -> tuple[bytes, str]:
     Returns (audio_bytes, media_type).
     Tries Groq Orpheus first; if terms required or failed, falls back to edge-tts.
     """
-    cleaned = (text or "").strip()
+    cleaned = clean_text_for_tts(text)
     if not cleaned:
         raise ValueError("TTS text is empty")
 
@@ -78,7 +121,7 @@ async def text_to_speech_async(text: str) -> tuple[bytes, str]:
 
 def text_to_speech(text: str) -> bytes:
     """Synchronous compatibility wrapper for text_to_speech."""
-    cleaned = (text or "").strip()
+    cleaned = clean_text_for_tts(text)
     if not cleaned:
         raise ValueError("TTS text is empty")
     return asyncio.run(text_to_speech_async(text))[0]
