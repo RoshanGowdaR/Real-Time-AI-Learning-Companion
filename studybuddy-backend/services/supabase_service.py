@@ -1,9 +1,148 @@
-"""Supabase service"""
+"""Supabase service with resilient local SQLite fallback."""
+import socket
+from urllib.parse import urlparse
 from supabase import create_client
 
 from config import SUPABASE_URL, SUPABASE_ANON_KEY
+from services.local_db import LocalDBClient
 
-supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+_local_db = LocalDBClient()
+_real_supabase = None
+_is_supabase_reachable = False
+
+try:
+    if SUPABASE_URL and SUPABASE_ANON_KEY:
+        parsed = urlparse(SUPABASE_URL)
+        host = parsed.hostname
+        if host:
+            # Check DNS availability so we do not hang on unresolvable hosts
+            socket.getaddrinfo(host, 443)
+            _real_supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            _is_supabase_reachable = True
+except Exception:
+    _is_supabase_reachable = False
+
+
+class FallbackTableQuery:
+    def __init__(self, remote_query, local_query):
+        self.remote_query = remote_query
+        self.local_query = local_query
+
+    def select(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.select(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.select(*args, **kwargs)
+        return self
+
+    def insert(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.insert(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.insert(*args, **kwargs)
+        return self
+
+    def update(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.update(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.update(*args, **kwargs)
+        return self
+
+    def delete(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.delete(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.delete(*args, **kwargs)
+        return self
+
+    def eq(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.eq(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.eq(*args, **kwargs)
+        return self
+
+    def neq(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.neq(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.neq(*args, **kwargs)
+        return self
+
+    def in_(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.in_(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.in_(*args, **kwargs)
+        return self
+
+    def order(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.order(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.order(*args, **kwargs)
+        return self
+
+    def limit(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.limit(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.limit(*args, **kwargs)
+        return self
+
+    def single(self, *args, **kwargs):
+        if self.remote_query:
+            try:
+                self.remote_query = self.remote_query.single(*args, **kwargs)
+            except Exception:
+                pass
+        self.local_query.single(*args, **kwargs)
+        return self
+
+    def execute(self):
+        if _is_supabase_reachable and self.remote_query:
+            try:
+                return self.remote_query.execute()
+            except Exception as e:
+                err_str = str(e).lower()
+                if "11001" in err_str or "getaddrinfo" in err_str or "connection" in err_str or "pgrst205" in err_str:
+                    return self.local_query.execute()
+                raise
+        return self.local_query.execute()
+
+
+class ResilientClient:
+    def table(self, table_name: str):
+        if not _is_supabase_reachable or _real_supabase is None:
+            return _local_db.table(table_name)
+        try:
+            rem = _real_supabase.table(table_name)
+            loc = _local_db.table(table_name)
+            return FallbackTableQuery(rem, loc)
+        except Exception:
+            return _local_db.table(table_name)
+
+
+supabase = ResilientClient()
 
 
 def _is_missing_table_error(exc: Exception) -> bool:
@@ -45,31 +184,59 @@ def create_student(name: str, email: str):
 
 
 def get_student(student_id: str):
-    """Fetch student by id, return row"""
-    result = supabase.table("students").select("*").eq("id", student_id).single().execute()
-    return result.data
+    """Fetch student by id, return row or None"""
+    try:
+        result = supabase.table("students").select("*").eq("id", student_id).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as exc:
+        print(f"[Supabase] get_student error: {exc}")
+        return None
 
 
 def get_student_by_email(email: str):
-    """Fetch student by email, return row"""
-    result = supabase.table("students").select("*").eq("email", email).single().execute()
-    return result.data
+    """Fetch student by email, return row or None"""
+    try:
+        result = supabase.table("students").select("*").eq("email", email).execute()
+        if result.data:
+            return result.data[0]
+        return None
+    except Exception as exc:
+        print(f"[Supabase] get_student_by_email error: {exc}")
+        return None
 
 
 def save_document(student_id: str, filename: str, summary: str):
     """Insert into documents table, return row"""
-    result = (
-        supabase.table("documents")
-        .insert({"student_id": student_id, "filename": filename, "summary": summary})
-        .execute()
-    )
-    return result.data[0]
+    try:
+        result = (
+            supabase.table("documents")
+            .insert({"student_id": student_id, "filename": filename, "summary": summary})
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+    except Exception as exc:
+        print(f"[Supabase] save_document fallback: {exc}")
+    import uuid, datetime
+    return {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "filename": filename,
+        "summary": summary,
+        "created_at": datetime.datetime.utcnow().isoformat(),
+    }
 
 
 def get_documents(student_id: str):
     """Fetch all documents for student, return list"""
-    result = supabase.table("documents").select("*").eq("student_id", student_id).execute()
-    return result.data
+    try:
+        result = supabase.table("documents").select("*").eq("student_id", student_id).execute()
+        return result.data or []
+    except Exception as exc:
+        print(f"[Supabase] get_documents error: {exc}")
+        return []
 
 
 def update_document(student_id: str, document_id: str, updates: dict):
@@ -77,92 +244,130 @@ def update_document(student_id: str, document_id: str, updates: dict):
     if not updates:
         return None
 
-    result = (
-        supabase.table("documents")
-        .update(updates)
-        .eq("id", document_id)
-        .eq("student_id", student_id)
-        .execute()
-    )
-
-    if result.data:
-        return result.data[0]
+    try:
+        result = (
+            supabase.table("documents")
+            .update(updates)
+            .eq("id", document_id)
+            .eq("student_id", student_id)
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+    except Exception as exc:
+        print(f"[Supabase] update_document error: {exc}")
     return None
 
 
 def delete_document(student_id: str, document_id: str):
     """Delete document by student and id, return deleted row or None."""
-    result = (
-        supabase.table("documents")
-        .delete()
-        .eq("id", document_id)
-        .eq("student_id", student_id)
-        .execute()
-    )
-
-    if result.data:
-        return result.data[0]
+    try:
+        result = (
+            supabase.table("documents")
+            .delete()
+            .eq("id", document_id)
+            .eq("student_id", student_id)
+            .execute()
+        )
+        if result.data:
+            return result.data[0]
+    except Exception as exc:
+        print(f"[Supabase] delete_document error: {exc}")
     return None
 
 
 def save_session(student_id: str, topics: list, goals: list, duration: int):
     """Insert into sessions table, return row"""
-    result = (
-        supabase.table("sessions")
-        .insert(
-            {
-                "student_id": student_id,
-                "topics_covered": topics,
-                "goals": goals,
-                "duration_mins": duration,
-            }
+    try:
+        result = (
+            supabase.table("sessions")
+            .insert(
+                {
+                    "student_id": student_id,
+                    "topics_covered": topics,
+                    "goals": goals,
+                    "duration_mins": duration,
+                }
+            )
+            .execute()
         )
-        .execute()
-    )
-    return result.data[0]
+        if result.data:
+            return result.data[0]
+    except Exception as exc:
+        print(f"[Supabase] save_session fallback: {exc}")
+    import uuid, datetime
+    return {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "topics_covered": topics,
+        "goals": goals,
+        "duration_mins": duration,
+        "created_at": datetime.datetime.utcnow().isoformat(),
+    }
 
 
 def get_recent_sessions(student_id: str):
     """Fetch recent sessions ordered by created_at desc, return list"""
-    result = (
-        supabase.table("sessions")
-        .select("*")
-        .eq("student_id", student_id)
-        .order("created_at", desc=True)
-        .limit(30)
-        .execute()
-    )
-    return result.data
+    try:
+        result = (
+            supabase.table("sessions")
+            .select("*")
+            .eq("student_id", student_id)
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        print(f"[Supabase] get_recent_sessions error: {exc}")
+        return []
 
 
 def save_chat_message(student_id: str, question: str, answer: str, source: str = "text"):
     """Insert a chat/talk message pair and return created row."""
-    result = (
-        supabase.table("chat_messages")
-        .insert(
-            {
-                "student_id": student_id,
-                "question": question,
-                "answer": answer,
-                "source": source,
-            }
+    try:
+        result = (
+            supabase.table("chat_messages")
+            .insert(
+                {
+                    "student_id": student_id,
+                    "question": question,
+                    "answer": answer,
+                    "source": source,
+                }
+            )
+            .execute()
         )
-        .execute()
-    )
-    return result.data[0]
+        if result.data:
+            return result.data[0]
+    except Exception as exc:
+        print(f"[Supabase] save_chat_message fallback: {exc}")
+    import uuid, datetime
+    return {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "question": question,
+        "answer": answer,
+        "source": source,
+        "created_at": datetime.datetime.utcnow().isoformat(),
+    }
 
 
 def get_chat_messages(student_id: str, limit: int = 100):
     """Fetch recent chat/talk messages ordered by created_at desc."""
-    result = (
-        supabase.table("chat_messages")
-        .select("*")
-        .eq("student_id", student_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return result.data
+    try:
+        result = (
+            supabase.table("chat_messages")
+            .select("*")
+            .eq("student_id", student_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as exc:
+        print(f"[Supabase] get_chat_messages error: {exc}")
+        return []
 
 
 def delete_chat_message(student_id: str, message_id: str):

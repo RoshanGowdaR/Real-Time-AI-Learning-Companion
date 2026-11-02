@@ -1,15 +1,18 @@
 """Voice routes - STT and TTS"""
 from pathlib import Path
+import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from config import UPLOADS_DIR
 from models.schemas import TTSRequest
 from services.stt_service import transcribe_audio
-from services.tts_service import text_to_speech
+from services.tts_service import text_to_speech_async
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
-UPLOADS_DIR = Path("uploads")
 TEMP_AUDIO_PATH = UPLOADS_DIR / "temp_audio.webm"
 
 
@@ -30,12 +33,13 @@ async def speech_to_text(file: UploadFile = File(...)):
 
 @router.post("/voice/tts")
 async def text_to_speech_endpoint(body: TTSRequest):
-    """Convert text to speech, return audio stream."""
+    """Convert text to speech, return audio stream or client fallback."""
     try:
-        audio_bytes = text_to_speech(body.text)
+        audio_bytes, media_type = await text_to_speech_async(body.text)
         return StreamingResponse(
             iter([audio_bytes]),
-            media_type="audio/wav",
+            media_type=media_type,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.info(f"TTS endpoint using client fallback: {e}")
+        return {"status": "client_fallback", "detail": "Use browser speech synthesis"}

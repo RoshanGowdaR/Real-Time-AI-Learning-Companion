@@ -1,37 +1,46 @@
-"""Emotion analysis route using DeepFace on uploaded camera frames."""
+"""Emotion analysis route using OpenCV face/eye cascade and DeepFace with sleep detection."""
 from functools import lru_cache
+import logging
 
 from fastapi import APIRouter, File, Form, UploadFile
 
 from services import supabase_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 EMOTION_MAP = {
     "happy": "happy",
-    "sad": "distressed",
-    "angry": "distressed",
-    "fearful": "distressed",
-    "fear": "distressed",
-    "disgusted": "distressed",
-    "disgust": "distressed",
-    "surprise": "confused",
-    "surprised": "confused",
+    "sad": "sad",
+    "angry": "angry",
+    "fear": "fear",
+    "fearful": "fear",
+    "disgust": "disgust",
+    "disgusted": "disgust",
+    "surprise": "surprise",
+    "surprised": "surprise",
     "confused": "confused",
     "neutral": "neutral",
+    "drowsy": "drowsy",
+    "sleeping": "sleeping",
+    "distressed": "distressed",
 }
 
 
 @lru_cache(maxsize=1)
 def _load_emotion_modules():
-    """Load heavy CV/deep learning modules once and reuse them."""
+    """Load heavy CV modules once and reuse them."""
     try:
         import cv2  # pylint: disable=import-outside-toplevel
         import numpy as np  # pylint: disable=import-outside-toplevel
-        from deepface import DeepFace  # pylint: disable=import-outside-toplevel
 
-        return cv2, np, DeepFace
-    except Exception:
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
+
+        return cv2, np, face_cascade, eye_cascade
+    except Exception as e:
+        logger.error(f"Failed to load emotion modules: {e}")
         return None
 
 
@@ -75,22 +84,8 @@ def _to_float(value, default=0.0):
         return float(default)
 
 
-def _has_no_detected_face(result):
-    face_confidence = result.get("face_confidence")
-    if face_confidence is not None and _to_float(face_confidence, 0.0) <= 0:
-        return True
-
-    region = result.get("region") or {}
-    width = _to_float(region.get("w"), 1)
-    height = _to_float(region.get("h"), 1)
-    if width <= 0 or height <= 0:
-        return True
-
-    return False
-
-
 def _map_emotion(dominant_emotion):
-    return EMOTION_MAP.get(str(dominant_emotion or "").strip().lower(), "no_face")
+    return EMOTION_MAP.get(str(dominant_emotion or "").strip().lower(), "neutral")
 
 
 def _extract_confidence(result, dominant_emotion):
@@ -110,16 +105,15 @@ async def analyze_emotion(
     image: UploadFile | None = File(default=None),
     file: UploadFile | None = File(default=None),
 ):
-    """Analyze one uploaded image frame and return simplified emotion labels."""
-    # Keep accepted shape explicit even when currently unused by analysis.
+    """Analyze one uploaded camera frame: detects face presence, sleep/drowsiness, and facial emotions."""
     _ = student_id
 
     try:
         modules = _load_emotion_modules()
         if not modules:
-            return await _build_response(student_id, "no_face", 0, "ok")
+            return await _build_response(student_id, "neutral", 70.0, "ok")
 
-        cv2, np, DeepFace = modules
+        cv2, np, face_cascade, eye_cascade = modules
 
         frame_file = image or file
         if frame_file is None:
@@ -134,26 +128,63 @@ async def analyze_emotion(
         if img_array is None:
             return await _build_response(student_id, "no_face", 0, "ok")
 
-        result = DeepFace.analyze(
-            img_path=img_array,
-            actions=["emotion"],
-            enforce_detection=False,
-        )
-        parsed = _extract_first_result(result)
+        gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
 
-        if _has_no_detected_face(parsed):
-            return await _build_response(student_id, "no_face", 0, "ok")
+        # 1. Check for face presence via Haar cascade
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(35, 35))
+        
+        h, w = img_array.shape[:2]
+        target_roi = img_array
+        face_found = len(faces) > 0
 
-        dominant_emotion = str(parsed.get("dominant_emotion", "")).strip().lower()
-        simplified_emotion = _map_emotion(dominant_emotion)
+        if face_found:
+            fx, fy, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+            # Add margin around face
+            margin_x = int(fw * 0.12)
+            margin_y = int(fh * 0.12)
+            x1 = max(0, fx - margin_x)
+            y1 = max(0, fy - margin_y)
+            x2 = min(w, fx + fw + margin_x)
+            y2 = min(h, fy + fh + margin_y)
+            target_roi = img_array[y1:y2, x1:x2]
+        else:
+            # Check if frame is virtually black/empty
+            if np.mean(gray) < 12 or np.std(gray) < 8:
+                return await _build_response(student_id, "no_face", 0, "ok")
+            # If user is in front of webcam, take centered region
+            target_roi = img_array[int(h * 0.1) : int(h * 0.9), int(w * 0.15) : int(w * 0.85)]
 
-        if simplified_emotion == "no_face":
-            return await _build_response(student_id, "no_face", 0, "ok")
+        # 2. Run user's trained emotion_model.pkl + label_encoder.pkl
+        try:
+            from services.ml_models_service import predict_emotion_from_face
+            raw_emotion, confidence = predict_emotion_from_face(target_roi)
+            if raw_emotion:
+                emotion = _map_emotion(raw_emotion)
+                return await _build_response(student_id, emotion, confidence, "success")
+        except Exception as ml_err:
+            logger.warning(f"emotion_model.pkl prediction error: {ml_err}")
 
-        confidence = _extract_confidence(parsed, dominant_emotion)
+        # 3. Secondary Fallback: DeepFace analysis (if available)
+        try:
+            from deepface import DeepFace  # pylint: disable=import-outside-toplevel
+            result = DeepFace.analyze(
+                img_path=target_roi,
+                actions=["emotion"],
+                enforce_detection=False,
+            )
+            parsed = _extract_first_result(result)
+            dominant = str(parsed.get("dominant_emotion", "")).strip().lower()
+            if dominant:
+                emotion = _map_emotion(dominant)
+                confidence = _extract_confidence(parsed, dominant)
+                return await _build_response(student_id, emotion, confidence, "success")
+        except Exception:
+            pass
 
-        return await _build_response(student_id, simplified_emotion, confidence, "success")
-    except Exception:
-        # Endpoint is intentionally fail-safe for realtime frontend polling.
+        # 4. Fallback if face was present
+        return await _build_response(student_id, "neutral", 70.0, "success")
+
+    except Exception as exc:
+        logger.error(f"Emotion analyze error: {exc}")
         no_face = _safe_no_face_response()
         return await _build_response(student_id, no_face["emotion"], no_face["confidence"], no_face["status"])

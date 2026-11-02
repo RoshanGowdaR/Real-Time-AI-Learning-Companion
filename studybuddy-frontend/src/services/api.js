@@ -191,11 +191,29 @@ export const api = {
     return res.json()
   },
 
-  chatQuery: async (student_id, question, source = "text") => {
+  chatQuery: async (
+    student_id,
+    question,
+    source = "text",
+    emotion = null,
+    conversation_history = null,
+    active_notes = null,
+    document_name = null,
+    selected_source_ids = null
+  ) => {
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ student_id, question, source }),
+      body: JSON.stringify({
+        student_id,
+        question,
+        source,
+        emotion,
+        conversation_history: Array.isArray(conversation_history) && conversation_history.length > 0 ? conversation_history : undefined,
+        active_notes: active_notes || undefined,
+        document_name: document_name || undefined,
+        selected_source_ids: Array.isArray(selected_source_ids) && selected_source_ids.length > 0 ? selected_source_ids : undefined,
+      }),
     })
     if (!res.ok) throw await parseError(res, "Chat query failed")
     return res.json()
@@ -217,6 +235,23 @@ export const api = {
     if (!res.ok) throw await parseError(res, "Extraction failed")
     return res.json()
   },
+
+  submitFeedback: async (student_id, rating, feedback, emotion = "neutral", intent = "on-track") => {
+    const res = await fetch(`${BASE_URL}/api/student/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ student_id, rating, feedback, emotion, intent }),
+    })
+    if (!res.ok) throw await parseError(res, "Feedback submission failed")
+    return res.json()
+  },
+
+  getHypothesis: async (student_id) => {
+    const res = await fetch(`${BASE_URL}/api/student/${student_id}/hypothesis`)
+    if (!res.ok) throw await parseError(res, "Failed to fetch hypothesis")
+    return res.json()
+  },
+
 
   getTalks: async (student_id, limit = 100) => {
     const res = await fetch(`${BASE_URL}/api/talks/${student_id}?limit=${limit}`)
@@ -404,14 +439,22 @@ export const api = {
   },
 
   textToSpeech: async (text) => {
-    const res = await fetch(`${BASE_URL}/api/voice/tts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    })
-    if (!res.ok) throw await parseError(res, "TTS failed")
-    const blob = await res.blob()
-    return URL.createObjectURL(blob)
+    try {
+      const res = await fetch(`${BASE_URL}/api/voice/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return null
+      const contentType = res.headers.get("content-type") || ""
+      if (contentType.includes("application/json")) {
+        return null
+      }
+      const blob = await res.blob()
+      return URL.createObjectURL(blob)
+    } catch {
+      return null
+    }
   },
 
   saveSession: async (student_id, topics_covered, goals, duration_mins) => {

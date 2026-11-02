@@ -8,12 +8,14 @@ import ScheduleView from '../components/ScheduleView'
 import OrganizationsView from '../components/OrganizationsView'
 import VoiceOrb from '../components/VoiceOrb'
 import FaceDetectionPip from '../components/FaceDetectionPip'
-import { startFaceDetection, stopFaceDetection } from '../utils/faceDetection'
+import FeedbackModal from '../components/FeedbackModal'
+import { startFaceDetection, stopFaceDetection, stopAllCameraStreams } from '../utils/faceDetection'
 import { getEmotionResponse } from '../utils/emotionReactions'
 import { api } from '../services/api'
 
 const TAB_ITEMS = [
   { id: 'home', label: 'Home' },
+  { id: 'workspace', label: 'Workspace' },
   { id: 'organizations', label: 'My Classes' },
   { id: 'library', label: 'Library' },
   { id: 'flashcards', label: 'Flashcards' },
@@ -97,6 +99,8 @@ export default function MainApp() {
   const previewVideoRef = useRef(null)
   const cameraStreamRef = useRef(null)
   const lastReactedEmotionRef = useRef(null)
+  const userDismissedCameraRef = useRef(false)
+  const hasAutoStartedRef = useRef(false)
 
   const [workspaces, setWorkspaces] = useState([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(() =>
@@ -113,6 +117,9 @@ export default function MainApp() {
   const [currentEmotion, setCurrentEmotion] = useState('neutral')
   const [lastReactedEmotion, setLastReactedEmotion] = useState(null)
   const [faceDetectionError, setFaceDetectionError] = useState('')
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false)
+  const lastPredictedIntentRef = useRef('on-track')
+  const pendingExitActionRef = useRef(null)
   const isWorkspaceTab = activeTab === 'workspace'
 
   const activeWorkspace = useMemo(
@@ -485,7 +492,7 @@ export default function MainApp() {
     await fetchData()
   }
 
-  const handleChat = async (question) => {
+  const handleChat = async (question, contextOptions = {}) => {
     const trimmedQuestion = question.trim()
     if (!trimmedQuestion) return null
 
@@ -499,8 +506,29 @@ export default function MainApp() {
       chatMessages: [...(current.chatMessages || []), studentMessage],
     }))
 
+    const prevMessages = (chatMessages || [])
+      .map((m) => ({
+        role: m.role === 'student' ? 'user' : m.role,
+        content: m.content || '',
+      }))
+      .filter((m) => m.content && (m.role === 'user' || m.role === 'assistant'))
+      .slice(-10)
+
     try {
-      const res = await api.chatQuery(student.id, trimmedQuestion, 'text')
+      const activeNotesContent = contextOptions.activeNotes !== undefined ? contextOptions.activeNotes : activeNotes
+      const activeDocTitle = contextOptions.activeTitle !== undefined ? contextOptions.activeTitle : activeTitle
+      const selectedSourceIds = contextOptions.selectedSourceIds || undefined
+
+      const res = await api.chatQuery(
+        student.id,
+        trimmedQuestion,
+        'text',
+        currentEmotion,
+        prevMessages,
+        activeNotesContent,
+        activeDocTitle,
+        selectedSourceIds
+      )
 
       updateActiveWorkspaceState((current) => ({
         chatMessages: [
@@ -524,6 +552,10 @@ export default function MainApp() {
           },
           ...prev.filter((talk) => String(talk.id) !== String(res.chat_id)),
         ].slice(0, 100))
+      }
+
+      if (res?.intent) {
+        lastPredictedIntentRef.current = res.intent
       }
 
       setSpeakText(res.answer)
@@ -566,6 +598,23 @@ export default function MainApp() {
   const handleClearTalks = async () => {
     await api.clearTalks(student.id)
     setTalkHistory([])
+  }
+
+  const handleNewChat = () => {
+    updateActiveWorkspaceState({
+      chatMessages: greeting
+        ? [{ id: `greeting-${Date.now()}`, role: 'assistant', content: greeting }]
+        : [{ id: `greeting-${Date.now()}`, role: 'assistant', content: 'Ready for a new study session! What would you like to review?' }],
+    })
+  }
+
+  const handleResumeTalk = (talk) => {
+    updateActiveWorkspaceState({
+      chatMessages: [
+        { id: `resumed-q-${talk.id}`, role: 'student', content: talk.question },
+        { id: `resumed-a-${talk.id}`, role: 'assistant', content: talk.answer },
+      ],
+    })
   }
 
   const handleOpenWorkspace = (workspaceId) => {
@@ -729,6 +778,10 @@ export default function MainApp() {
     if (!student.id) return
 
     setFaceDetectionError('')
+    userDismissedCameraRef.current = false
+    try {
+      localStorage.removeItem('studybuddy_camera_off')
+    } catch {}
 
     const stream = await startFaceDetection(student.id, handleEmotionDetected, captureVideoRef)
     cameraStreamRef.current = stream
@@ -739,11 +792,40 @@ export default function MainApp() {
   }, [student.id, handleEmotionDetected])
 
   const handleStopFaceDetection = useCallback(() => {
-    stopFaceDetection(cameraStreamRef.current, captureVideoRef)
-    cameraStreamRef.current = null
-    if (previewVideoRef.current) {
-      previewVideoRef.current.srcObject = null
+    userDismissedCameraRef.current = true
+    try {
+      localStorage.setItem('studybuddy_camera_off', 'true')
+    } catch {}
+
+    // First stop all tracks on cameraStreamRef
+    if (cameraStreamRef.current && typeof cameraStreamRef.current.getTracks === 'function') {
+      cameraStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.enabled = false
+          track.stop()
+        } catch {}
+      })
     }
+    cameraStreamRef.current = null
+
+    // Stop all tracks on previewVideoRef
+    if (previewVideoRef.current) {
+      if (previewVideoRef.current.srcObject && typeof previewVideoRef.current.srcObject.getTracks === 'function') {
+        previewVideoRef.current.srcObject.getTracks().forEach((track) => {
+          try {
+            track.enabled = false
+            track.stop()
+          } catch {}
+        })
+      }
+      previewVideoRef.current.srcObject = null
+      try { previewVideoRef.current.pause() } catch {}
+    }
+
+    // Call stopFaceDetection and stopAllCameraStreams
+    stopFaceDetection(null, captureVideoRef)
+    stopAllCameraStreams()
+
     setFaceDetectionOn(false)
     setCurrentEmotion('neutral')
     setLastReactedEmotion(null)
@@ -752,13 +834,67 @@ export default function MainApp() {
   }, [])
 
   useEffect(() => {
-    if (isWorkspaceTab) return
+    if (!isWorkspaceTab || !student.id) return
+    let isCameraExplicitlyOff = false
+    try {
+      isCameraExplicitlyOff = localStorage.getItem('studybuddy_camera_off') === 'true'
+    } catch {}
 
-    setSpeakText('')
-    if (faceDetectionOn) {
-      handleStopFaceDetection()
+    if (faceDetectionOn || userDismissedCameraRef.current || hasAutoStartedRef.current || isCameraExplicitlyOff) return
+
+    hasAutoStartedRef.current = true
+    handleStartFaceDetection().catch((err) => {
+      console.warn('Auto-camera start:', err)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWorkspaceTab, student.id])
+
+  const handleExitWorkspaceRequest = (target = 'home') => {
+    pendingExitActionRef.current = target
+    setIsFeedbackModalOpen(true)
+  }
+
+  const handleTabChange = (tabId) => {
+    if (activeTab === 'workspace' && tabId !== 'workspace') {
+      handleExitWorkspaceRequest(tabId)
+      return
     }
-  }, [isWorkspaceTab, faceDetectionOn, handleStopFaceDetection])
+    setActiveTab(tabId)
+  }
+
+  const handleFeedbackSubmit = async (rating, feedback) => {
+    return await api.submitFeedback(
+      student.id,
+      rating,
+      feedback,
+      currentEmotion || 'neutral',
+      lastPredictedIntentRef.current || 'on-track'
+    )
+  }
+
+  const handleModalClose = () => {
+    setIsFeedbackModalOpen(false)
+    if (pendingExitActionRef.current) {
+      const target = pendingExitActionRef.current
+      pendingExitActionRef.current = null
+      if (target === 'logout') {
+        handleLogout()
+      } else {
+        setActiveTab(target)
+      }
+    }
+  }
+
+  const handleModalExitWorkspace = () => {
+    setIsFeedbackModalOpen(false)
+    const target = pendingExitActionRef.current || 'home'
+    pendingExitActionRef.current = null
+    if (target === 'logout') {
+      handleLogout()
+    } else {
+      setActiveTab(target)
+    }
+  }
 
   const handleToggleFaceDetection = async () => {
     if (faceDetectionOn) {
@@ -784,21 +920,21 @@ export default function MainApp() {
   return (
     <div className="h-screen w-full bg-[#0a0a0f] md:overflow-hidden overflow-y-auto">
       <header className="fixed top-0 left-0 right-0 h-14 bg-[#111118] border-b border-[#1e1e2e] flex items-center justify-between px-6 z-40">
-        <div className="flex items-center gap-6 min-w-0">
+        <div className="flex items-center gap-4 min-w-0">
           <div className="flex items-center gap-2 shrink-0">
             <span className="h-6 w-6 rounded-md bg-indigo-600 border border-indigo-500 grid place-items-center">
               <span className="h-2 w-2 rounded-sm bg-white" />
             </span>
-            <p className="text-white font-semibold">StudyBuddy</p>
+            <p className="text-white font-semibold text-sm sm:text-base">StudyBuddy</p>
           </div>
 
-          <nav className="hidden md:flex items-center gap-1 bg-[#171827] border border-[#2c2d42] rounded-xl p-1">
+          <nav className="hidden lg:flex items-center gap-1 bg-[#171827] border border-[#2c2d42] rounded-xl p-1">
             {TAB_ITEMS.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                onClick={() => handleTabChange(tab.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === tab.id
                     ? 'bg-indigo-600 text-white'
                     : 'text-gray-400 hover:text-white'
@@ -810,47 +946,93 @@ export default function MainApp() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {isWorkspaceTab && (
             <button
               type="button"
               onClick={handleToggleFaceDetection}
               className={faceDetectionOn
-                ? 'group inline-flex items-center gap-2 rounded-full border border-indigo-300/60 bg-gradient-to-r from-indigo-600/80 to-blue-600/75 px-3 py-1.5 text-xs text-white shadow-[0_6px_18px_rgba(80,85,230,0.35)] transition-all hover:from-indigo-500 hover:to-blue-500'
-                : 'group inline-flex items-center gap-2 rounded-full border border-[#2d3659] bg-[#131a2c] px-3 py-1.5 text-xs text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-indigo-400/50 hover:bg-[#17213a]'}
-              title={currentEmotion ? `Current emotion: ${currentEmotion}` : 'Focus Mode'}
-              data-last-reacted-emotion={lastReactedEmotion || ''}
+                ? 'group inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-red-400/50 bg-red-950/40 hover:bg-red-900/60 px-2.5 sm:px-3 py-1.5 text-xs text-red-200 hover:text-white shadow-sm transition-all shrink-0 cursor-pointer'
+                : 'group inline-flex items-center gap-1.5 sm:gap-2 rounded-full border border-indigo-500/40 bg-indigo-950/40 hover:bg-indigo-900/60 px-2.5 sm:px-3 py-1.5 text-xs text-indigo-200 hover:text-white shadow-sm transition-all shrink-0 cursor-pointer'}
+              title={faceDetectionOn ? 'Camera is ON. Click to turn off camera' : 'Camera is OFF. Click to turn on camera'}
+              aria-label={faceDetectionOn ? 'Turn off camera' : 'Turn on camera'}
             >
               <span className={faceDetectionOn
-                ? 'grid h-5 w-5 place-items-center rounded-full border border-white/25 bg-white/20'
-                : 'grid h-5 w-5 place-items-center rounded-full border border-slate-500/40 bg-slate-800/70'}
+                ? 'grid h-5 w-5 place-items-center rounded-full border border-red-400/40 bg-red-800/60 shrink-0 text-red-200'
+                : 'grid h-5 w-5 place-items-center rounded-full border border-indigo-400/40 bg-indigo-800/60 shrink-0 text-indigo-200'}
               >
-                <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
-                  <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h8A2.5 2.5 0 0 1 17 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16.5v-9Z" stroke="currentColor" strokeWidth="1.8" />
-                  <path d="m17 9 3-1.7v9.4L17 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                {faceDetectionOn ? (
+                  <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                    <path d="M21 21l-3.5-3.5M21 8.5V17m-4-8.5v5.5M4 7.5A2.5 2.5 0 0 1 6.5 5h3m5 0h1.5A2.5 2.5 0 0 1 18.5 7.5v1.5" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h8A2.5 2.5 0 0 1 17 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 4 16.5v-9Z" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="m17 9 3-1.7v9.4L17 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
               </span>
 
-              <span className="leading-none text-left">
-                <span className="block font-medium">Focus Mode</span>
-                <span className={faceDetectionOn ? 'block text-[10px] text-indigo-100/90' : 'block text-[10px] text-slate-400'}>
-                  {faceDetectionOn ? 'Camera active' : 'Enable camera'}
+              <span className="leading-none text-left hidden sm:block">
+                <span className="block font-medium text-[11px] sm:text-xs">
+                  {faceDetectionOn ? 'Turn Off Cam' : 'Turn On Cam'}
+                </span>
+                <span className={faceDetectionOn ? 'block text-[10px] text-red-300 capitalize' : 'block text-[10px] text-indigo-300'}>
+                  {faceDetectionOn
+                    ? currentEmotion === 'confused'
+                      ? '😕 Confused'
+                      : currentEmotion === 'distressed'
+                      ? '😟 Distressed'
+                      : currentEmotion === 'angry'
+                      ? '😠 Frustrated'
+                      : currentEmotion === 'fear'
+                      ? '😨 Anxious'
+                      : currentEmotion === 'sad'
+                      ? '😢 Sad'
+                      : currentEmotion === 'surprise'
+                      ? '😲 Surprised'
+                      : currentEmotion === 'disgust'
+                      ? '😖 Displeased'
+                      : currentEmotion === 'happy'
+                      ? '😊 Happy'
+                      : currentEmotion === 'neutral'
+                      ? '😐 Focused'
+                      : currentEmotion === 'sleeping'
+                      ? '😴 Sleeping'
+                      : currentEmotion === 'drowsy'
+                      ? '🥱 Drowsy'
+                      : currentEmotion === 'no_face'
+                      ? '👀 Away'
+                      : `👤 ${currentEmotion}`
+                    : 'Camera Off'}
                 </span>
               </span>
 
-              <span className={faceDetectionOn ? 'h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.95)]' : 'h-2 w-2 rounded-full bg-slate-500'} />
+              <span className={faceDetectionOn ? 'h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)] shrink-0' : 'h-2 w-2 rounded-full bg-slate-500 shrink-0'} />
             </button>
           )}
 
           <button
             type="button"
-            onClick={handleLogout}
-            className="text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1 transition-all"
+            onClick={() => handleExitWorkspaceRequest(isWorkspaceTab ? 'home' : 'logout')}
+            className="text-xs text-indigo-200 hover:text-white bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 rounded-lg px-2 sm:px-3 py-1.5 transition-all flex items-center gap-1 font-medium shadow-sm shrink-0 whitespace-nowrap"
+            title="End session and calibrate teaching style"
           >
-            Logout
+            <span>✨</span>
+            <span className="hidden xl:inline">End Session & Calibrate</span>
+            <span className="hidden sm:inline xl:hidden">Calibrate</span>
           </button>
 
-          <div className="rounded-full bg-[#161726] border border-[#2c2d42] px-3 py-1 text-sm text-gray-300">
+          <button
+            type="button"
+            onClick={() => handleExitWorkspaceRequest('logout')}
+            className="text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-2 sm:px-2.5 py-1.5 transition-all shrink-0"
+          >
+            Exit
+          </button>
+
+          <div className="hidden sm:block rounded-full bg-[#161726] border border-[#2c2d42] px-2.5 sm:px-3 py-1 text-xs text-gray-300 shrink-0 max-w-[100px] truncate">
             {studentName}
           </div>
         </div>
@@ -900,6 +1082,11 @@ export default function MainApp() {
             talkHistory={talkHistory}
             onDeleteTalk={handleDeleteTalk}
             onClearTalks={handleClearTalks}
+            onNewChat={handleNewChat}
+            onResumeTalk={handleResumeTalk}
+            onExitWorkspace={() => handleExitWorkspaceRequest('home')}
+            faceDetectionOn={faceDetectionOn}
+            onToggleFaceDetection={handleToggleFaceDetection}
           />
         )}
 
@@ -950,8 +1137,43 @@ export default function MainApp() {
           studentId={student.id}
           onResult={handleVoiceResult}
           speakText={speakText}
+          currentEmotion={currentEmotion}
+          recentMessages={chatMessages}
         />
       )}
+
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={handleModalClose}
+        onSubmit={handleFeedbackSubmit}
+        onExitWorkspace={handleModalExitWorkspace}
+      />
+
+      {/* Mobile Bottom Navigation Bar (< lg) */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-13 bg-[#111118]/95 backdrop-blur-lg border-t border-[#1e1e2e] flex items-center justify-around px-2 z-40">
+        {TAB_ITEMS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => handleTabChange(tab.id)}
+            className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-lg text-[10px] font-medium transition-all ${
+              activeTab === tab.id
+                ? 'text-indigo-400 font-semibold'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            <span className="text-sm">
+              {tab.id === 'home' && '🏠'}
+              {tab.id === 'workspace' && '💻'}
+              {tab.id === 'organizations' && '👥'}
+              {tab.id === 'library' && '📚'}
+              {tab.id === 'flashcards' && '🗂️'}
+              {tab.id === 'schedule' && '📅'}
+            </span>
+            <span className="mt-0.5 leading-none text-[9px]">{tab.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }

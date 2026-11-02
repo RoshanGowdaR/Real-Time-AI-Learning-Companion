@@ -11,6 +11,11 @@ function relationFirst(value) {
   return null
 }
 
+function teacherNameFromSubject(subject) {
+  const teacher = relationFirst(subject?.teachers) || {}
+  return teacher?.full_name || 'Unknown'
+}
+
 function normalizeSubjectRow(row) {
   const subject = row?.subject || {}
   const teacher = row?.teacher || {}

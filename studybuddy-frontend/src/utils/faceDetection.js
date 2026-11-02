@@ -3,6 +3,7 @@ import { api } from '../services/api'
 let detectionInterval = null
 let registeredVideoRef = null
 let detectionInFlight = false
+let activeStream = null
 
 export function setFaceDetectionVideoRef(videoRef) {
   registeredVideoRef = videoRef
@@ -19,6 +20,41 @@ function clearDetectionInterval() {
   }
 }
 
+export function stopAllCameraStreams() {
+  clearDetectionInterval()
+  detectionInFlight = false
+
+  if (activeStream) {
+    try {
+      activeStream.getTracks().forEach((track) => {
+        try {
+          track.enabled = false
+          track.stop()
+        } catch {}
+      })
+    } catch {}
+    activeStream = null
+  }
+
+  // Also query all video elements in the DOM and release their tracks
+  if (typeof document !== 'undefined') {
+    document.querySelectorAll('video').forEach((v) => {
+      try {
+        if (v.srcObject && typeof v.srcObject.getTracks === 'function') {
+          v.srcObject.getTracks().forEach((track) => {
+            try {
+              track.enabled = false
+              track.stop()
+            } catch {}
+          })
+        }
+        v.srcObject = null
+        v.pause()
+      } catch {}
+    })
+  }
+}
+
 export async function startFaceDetection(studentId, onEmotionDetected, videoRef) {
   if (!studentId) {
     throw new Error('Student is not available for face detection.')
@@ -28,15 +64,23 @@ export async function startFaceDetection(studentId, onEmotionDetected, videoRef)
     throw new Error('Camera access is not supported in this browser.')
   }
 
+  // Stop any previously existing stream before starting a new one
+  stopAllCameraStreams()
+
   const videoElement = resolveVideoElement(videoRef)
   if (!videoElement) {
     throw new Error('Video preview element is not ready.')
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+  activeStream = stream
 
   videoElement.srcObject = stream
-  await videoElement.play()
+  try {
+    await videoElement.play()
+  } catch (err) {
+    console.warn('Video element play() was interrupted:', err)
+  }
 
   clearDetectionInterval()
   detectionInFlight = false
@@ -49,7 +93,7 @@ export async function startFaceDetection(studentId, onEmotionDetected, videoRef)
     captureAndAnalyze(studentId, onEmotionDetected, videoRef).catch((err) => {
       console.error('Face detection capture failed', err)
     })
-  }, 5000)
+  }, 4000)
 
   return stream
 }
@@ -64,13 +108,13 @@ export async function captureAndAnalyze(studentId, onEmotionDetected, videoRef) 
 
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = 320
-    canvas.height = 240
+    canvas.width = 480
+    canvas.height = 360
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    ctx.drawImage(videoElement, 0, 0, 320, 240)
+    ctx.drawImage(videoElement, 0, 0, 480, 360)
 
     const blob = await new Promise((resolve) => {
       canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.8)
@@ -96,12 +140,41 @@ export function stopFaceDetection(stream, videoRef) {
   clearDetectionInterval()
   detectionInFlight = false
 
+  // Stop active stream held in module
+  if (activeStream) {
+    try {
+      activeStream.getTracks().forEach((track) => {
+        try {
+          track.enabled = false
+          track.stop()
+        } catch {}
+      })
+    } catch {}
+    activeStream = null
+  }
+
+  // Stop passed stream reference if any
   if (stream && typeof stream.getTracks === 'function') {
-    stream.getTracks().forEach((track) => track.stop())
+    stream.getTracks().forEach((track) => {
+      try {
+        track.enabled = false
+        track.stop()
+      } catch {}
+    })
   }
 
   const videoElement = resolveVideoElement(videoRef)
   if (videoElement) {
+    try { videoElement.pause() } catch {}
+
+    if (videoElement.srcObject && typeof videoElement.srcObject.getTracks === 'function') {
+      videoElement.srcObject.getTracks().forEach((track) => {
+        try {
+          track.enabled = false
+          track.stop()
+        } catch {}
+      })
+    }
     videoElement.srcObject = null
   }
 }
