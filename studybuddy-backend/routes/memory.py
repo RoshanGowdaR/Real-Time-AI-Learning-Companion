@@ -13,16 +13,22 @@ async def get_memory(student_id: str):
     """Get student info, recent sessions, and personalized greeting."""
     try:
         student = supabase_service.get_student(student_id)
+        name = student.get("name", "Student") if student else "Student"
         recent_sessions = supabase_service.get_recent_sessions(student_id)
-        greeting = generate_greeting(student["name"], recent_sessions)
+        greeting = generate_greeting(name, recent_sessions)
         return {
-            "student_name": student["name"],
+            "student_name": name,
             "greeting": greeting,
             "recent_sessions": recent_sessions,
             "status": "success",
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        return {
+            "student_name": "Student",
+            "greeting": "Welcome back! Ready to dive in?",
+            "recent_sessions": [],
+            "status": "success",
+        }
 
 
 @router.post("/memory/session")

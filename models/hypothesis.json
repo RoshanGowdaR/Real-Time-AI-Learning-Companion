@@ -1,0 +1,9 @@
+{
+    "intent": "?",
+    "emotion": "?",
+    "response_depth": "?",
+    "used_examples": "True",
+    "positive_examples_seen": 6,
+    "timestamp": "2026-10-15 00:17:08",
+    "description": "Most specific consistent hypothesis from 6 positive examples"
+}

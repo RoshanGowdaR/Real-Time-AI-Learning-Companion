@@ -3,12 +3,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+from config import UPLOADS_DIR
 from models.schemas import DocumentUpdateRequest
 from services.rag_service import process_pdf, rebuild_student_index
 from services import supabase_service
 
 router = APIRouter()
-UPLOADS_DIR = Path("uploads")
 
 
 @router.post("/upload")

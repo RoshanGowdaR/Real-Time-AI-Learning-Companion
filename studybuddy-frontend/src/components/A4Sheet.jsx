@@ -8,63 +8,147 @@ function toPlainText(html) {
     .trim()
 }
 
-function removeLegacyReplyCards(html) {
-  if (!html) return ''
+function formatInline(text) {
+  return String(text || '')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.*?)__/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code class="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-xs font-mono font-medium">$1</code>')
+}
 
-  const container = document.createElement('div')
-  container.innerHTML = html
+export function markdownToHtml(md) {
+  if (!md) return ''
+  const lines = String(md).split('\n')
+  const htmlLines = []
+  let inList = false
+  let listType = null // 'ul' or 'ol'
+  let inCodeBlock = false
+  let codeBuffer = []
 
-  const isLegacyMarker = (value) => {
-    const normalized = String(value || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase()
-
-    return (
-      normalized.startsWith('sensei answer') ||
-      normalized.startsWith('voice question') ||
-      normalized.startsWith('voice answer')
-    )
+  const closeList = () => {
+    if (inList) {
+      htmlLines.push(listType === 'ol' ? '</ol>' : '</ul>')
+      inList = false
+      listType = null
+    }
   }
 
-  container.querySelectorAll('div').forEach((node) => {
-    const className = String(node.className || '').toLowerCase()
-    const text = String(node.textContent || '')
-    const looksLikeCard =
-      className.includes('border-l') ||
-      className.includes('rounded') ||
-      className.includes('bg-') ||
-      className.includes('p-')
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
 
-    const isLegacyCard = looksLikeCard && isLegacyMarker(text)
-
-    if (isLegacyCard) {
-      node.remove()
-    }
-  })
-
-  container.querySelectorAll('p,h1,h2,h3,h4,h5,h6,span,strong').forEach((node) => {
-    if (isLegacyMarker(node.textContent || '')) {
-      const parentCard = node.closest('div,section,article,blockquote')
-      if (parentCard && parentCard !== container) {
-        parentCard.remove()
+    // Code blocks
+    if (line.trim().startsWith('```')) {
+      if (inCodeBlock) {
+        htmlLines.push(
+          `<pre class="bg-gray-900 text-gray-100 p-3.5 rounded-xl my-3 text-xs overflow-x-auto font-mono leading-relaxed border border-gray-800"><code>${codeBuffer.join('\n')}</code></pre>`
+        )
+        codeBuffer = []
+        inCodeBlock = false
       } else {
-        node.remove()
+        closeList()
+        inCodeBlock = true
       }
+      continue
     }
-  })
 
-  container.querySelectorAll('div,section,article,blockquote').forEach((node) => {
-    if (!toPlainText(node.innerHTML || '')) {
-      node.remove()
+    if (inCodeBlock) {
+      codeBuffer.push(line.replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+      continue
     }
-  })
 
-  return container.innerHTML
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      closeList()
+      htmlLines.push('<p><br/></p>')
+      continue
+    }
+
+    // Horizontal rule
+    if (/^(\-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      closeList()
+      htmlLines.push('<hr class="my-4 border-gray-200" />')
+      continue
+    }
+
+    // Headings
+    if (trimmed.startsWith('# ')) {
+      closeList()
+      htmlLines.push(
+        `<h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900 mt-5 mb-3 pb-2 border-b border-indigo-100">${formatInline(trimmed.slice(2))}</h1>`
+      )
+      continue
+    }
+    if (trimmed.startsWith('## ')) {
+      closeList()
+      htmlLines.push(
+        `<h2 class="text-xl sm:text-2xl font-bold text-indigo-950 mt-4 mb-2 pb-1 border-b border-gray-100">${formatInline(trimmed.slice(3))}</h2>`
+      )
+      continue
+    }
+    if (trimmed.startsWith('### ')) {
+      closeList()
+      htmlLines.push(
+        `<h3 class="text-lg sm:text-xl font-semibold text-indigo-900 mt-3 mb-1.5">${formatInline(trimmed.slice(4))}</h3>`
+      )
+      continue
+    }
+    if (trimmed.startsWith('#### ')) {
+      closeList()
+      htmlLines.push(
+        `<h4 class="text-base font-semibold text-gray-800 mt-2 mb-1">${formatInline(trimmed.slice(5))}</h4>`
+      )
+      continue
+    }
+
+    // Blockquote
+    if (trimmed.startsWith('> ')) {
+      closeList()
+      htmlLines.push(
+        `<blockquote class="border-l-4 border-indigo-500 bg-indigo-50/70 p-3 my-2.5 rounded-r-xl text-gray-800 italic leading-relaxed">${formatInline(trimmed.slice(2))}</blockquote>`
+      )
+      continue
+    }
+
+    // Bullet lists: *, -, +
+    const bulletMatch = line.match(/^(\s*)[*\-+]\s+(.*)$/)
+    if (bulletMatch) {
+      if (!inList || listType !== 'ul') {
+        closeList()
+        htmlLines.push('<ul class="list-disc pl-6 my-2 space-y-1.5 text-gray-700">')
+        inList = true
+        listType = 'ul'
+      }
+      htmlLines.push(`<li>${formatInline(bulletMatch[2])}</li>`)
+      continue
+    }
+
+    // Numbered lists: 1. , 2. 
+    const numMatch = line.match(/^(\s*)\d+\.\s+(.*)$/)
+    if (numMatch) {
+      if (!inList || listType !== 'ol') {
+        closeList()
+        htmlLines.push('<ol class="list-decimal pl-6 my-2 space-y-1.5 text-gray-700">')
+        inList = true
+        listType = 'ol'
+      }
+      htmlLines.push(`<li>${formatInline(numMatch[2])}</li>`)
+      continue
+    }
+
+    // Regular paragraph
+    closeList()
+    htmlLines.push(`<p class="my-2 leading-relaxed text-gray-700">${formatInline(trimmed)}</p>`)
+  }
+
+  closeList()
+  return htmlLines.join('\n')
 }
 
 export default function A4Sheet({ title, notes }) {
   const [saveLabel, setSaveLabel] = useState('Saved')
+  const [copied, setCopied] = useState(false)
   const [selectionToolbar, setSelectionToolbar] = useState({
     visible: false,
     top: 0,
@@ -73,18 +157,10 @@ export default function A4Sheet({ title, notes }) {
 
   const editorRef = useRef(null)
   const storageKeyRef = useRef('')
-  const lastSyncedNotesRef = useRef('')
+  const lastRenderedNotesRef = useRef('')
   const selectionRangeRef = useRef(null)
 
-  const toRichHtml = (value) =>
-    String(value || '')
-      .replace(/\n/g, '<br/>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-
-  const isSystemStateText = (value) => {
-    const normalized = String(value || '').trim().toLowerCase()
-    return normalized === 'generating notes, please wait...' || normalized === 'error generating notes.'
-  }
+  const isGenerating = String(notes || '').trim().toLowerCase() === 'generating notes, please wait...'
 
   const persistEditor = useCallback(() => {
     if (!editorRef.current || !storageKeyRef.current) return
@@ -159,62 +235,49 @@ export default function A4Sheet({ title, notes }) {
     applyCommand('unlink')
   }
 
+  const handleCopyNotes = () => {
+    if (!editorRef.current) return
+    const text = toPlainText(editorRef.current.innerHTML)
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const handleClearSheet = () => {
+    if (window.confirm('Are you sure you want to clear these notes?')) {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = ''
+        persistEditor()
+      }
+    }
+  }
+
+  // Load initial notes from storage on mount
   useEffect(() => {
     const studentId = localStorage.getItem('student_id') || 'guest'
     storageKeyRef.current = `studybuddy_editor_notes_${studentId}`
 
     const saved = localStorage.getItem(storageKeyRef.current) || ''
-    const sanitizedSaved = removeLegacyReplyCards(saved)
-
-    if (editorRef.current) {
-      editorRef.current.innerHTML = sanitizedSaved
-    }
-    if (saved !== sanitizedSaved) {
-      localStorage.setItem(storageKeyRef.current, sanitizedSaved)
+    if (editorRef.current && saved && !notes) {
+      editorRef.current.innerHTML = saved
     }
   }, [])
 
+  // Sync incoming notes prop
   useEffect(() => {
     if (!editorRef.current) return
+    if (!notes || isGenerating) return
+    if (notes === lastRenderedNotesRef.current) return
 
-    const currentSanitized = removeLegacyReplyCards(editorRef.current.innerHTML || '')
-    if (currentSanitized !== editorRef.current.innerHTML) {
-      editorRef.current.innerHTML = currentSanitized
-      if (storageKeyRef.current) {
-        localStorage.setItem(storageKeyRef.current, currentSanitized)
-      }
-    }
+    const rendered = markdownToHtml(notes)
+    editorRef.current.innerHTML = rendered
+    lastRenderedNotesRef.current = notes
 
-    if (!notes || isSystemStateText(notes)) return
-    if (notes === lastSyncedNotesRef.current) return
-
-    const incomingHtml = removeLegacyReplyCards(toRichHtml(notes))
-    const currentHtml = editorRef.current.innerHTML.trim()
-
-    if (!lastSyncedNotesRef.current) {
-      if (!currentHtml) {
-        editorRef.current.innerHTML = incomingHtml
-      } else {
-        const currentPlain = toPlainText(currentHtml)
-        const incomingPlain = toPlainText(incomingHtml)
-        if (incomingPlain && !currentPlain.includes(incomingPlain)) {
-          editorRef.current.insertAdjacentHTML('beforeend', `<p><br/></p>${incomingHtml}`)
-        }
-      }
-    } else if (notes.startsWith(lastSyncedNotesRef.current)) {
-      const delta = notes.slice(lastSyncedNotesRef.current.length)
-      if (delta.trim()) {
-        editorRef.current.insertAdjacentHTML('beforeend', toRichHtml(delta))
-      }
-    } else {
-      editorRef.current.innerHTML = incomingHtml
-    }
-
-    lastSyncedNotesRef.current = notes
     if (storageKeyRef.current) {
-      localStorage.setItem(storageKeyRef.current, editorRef.current.innerHTML)
+      localStorage.setItem(storageKeyRef.current, rendered)
     }
-  }, [notes, persistEditor])
+  }, [notes, isGenerating])
 
   useEffect(() => {
     const handleSelection = () => updateSelectionToolbar()
@@ -231,19 +294,57 @@ export default function A4Sheet({ title, notes }) {
   }, [updateSelectionToolbar])
 
   return (
-    <div className="relative z-10 w-full max-w-[210mm] mb-36 md:mb-28">
-      <div className="w-full min-h-[297mm] bg-white rounded-2xl shadow-[0_35px_80px_rgba(0,0,0,0.55)] p-10 text-gray-900 flex flex-col">
+    <div className="relative z-10 w-full max-w-[210mm] mb-36 md:mb-28 min-w-0 px-1 sm:px-0">
+      <div className="w-full min-h-[297mm] bg-white rounded-2xl shadow-[0_35px_80px_rgba(0,0,0,0.55)] p-5 sm:p-7 md:p-9 lg:p-11 text-gray-900 flex flex-col min-w-0 break-words border border-gray-100">
         <div className="border-b border-gray-200 pb-3 mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-bold text-gray-800">{title || 'Study Notes'}</h2>
-          <span className="text-[11px] text-gray-500">{saveLabel}</span>
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
+              {title || 'Study Notes'}
+            </h2>
+            <p className="text-[11px] text-indigo-600 font-medium tracking-wide">
+              Interactive Notion-Style Notebook
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyNotes}
+              className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 transition-all font-medium"
+              title="Copy notes text"
+            >
+              {copied ? '✓ Copied' : '📋 Copy'}
+            </button>
+            <button
+              type="button"
+              onClick={handleClearSheet}
+              className="text-xs px-2 py-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 transition-all font-medium"
+              title="Clear notes"
+            >
+              Clear
+            </button>
+            <span className="text-[11px] text-gray-400 pl-1">{saveLabel}</span>
+          </div>
         </div>
 
-        <div className="relative flex-1 text-sm text-gray-700 leading-relaxed">
+        {isGenerating && (
+          <div className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50/80 p-4 flex items-center gap-3 animate-pulse">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-indigo-900">Synthesizing study notes...</p>
+              <p className="text-xs text-indigo-700 mt-0.5">
+                Sensei is extracting key concepts and generating comprehensive notes for {title}.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="relative flex-1 text-sm text-gray-800 leading-relaxed min-w-0">
           <div
             ref={editorRef}
             contentEditable
             suppressContentEditableWarning
-            data-placeholder="Start writing your notes... Type naturally, like Notion."
+            data-placeholder="Click 'Use' on any source to display notes here, or start typing naturally like Notion..."
             onMouseUp={updateSelectionToolbar}
             onKeyUp={updateSelectionToolbar}
             onBlur={() => {
@@ -254,7 +355,7 @@ export default function A4Sheet({ title, notes }) {
               persistEditor()
               setSaveLabel('Saved')
             }}
-            className="relative min-h-[56vh] pb-12 outline-none text-[15px] leading-8 text-gray-700 [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-400 [&:empty:before]:pointer-events-none [&:empty:before]:block [&:empty:before]:absolute [&:empty:before]:top-0 [&:empty:before]:left-0 [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:text-gray-900 [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:text-gray-800 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-gray-800 [&_h3]:mt-4 [&_h3]:mb-2 [&_p]:my-1.5 [&_li]:ml-5 [&_li]:list-disc [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-300 [&_blockquote]:bg-indigo-50 [&_blockquote]:rounded-r-lg [&_blockquote]:px-3 [&_blockquote]:py-2 [&_blockquote]:my-2"
+            className="relative min-h-[60vh] pb-12 outline-none text-[15px] leading-8 text-gray-800 break-words [overflow-wrap:anywhere] min-w-0 [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-400 [&:empty:before]:pointer-events-none [&:empty:before]:block [&:empty:before]:absolute [&:empty:before]:top-0 [&:empty:before]:left-0 [&_h1]:text-2xl sm:[&_h1]:text-3xl [&_h1]:font-extrabold [&_h1]:text-gray-900 [&_h1]:mt-5 [&_h1]:mb-3 [&_h1]:pb-2 [&_h1]:border-b [&_h1]:border-indigo-100 [&_h2]:text-xl sm:[&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-indigo-950 [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:text-lg sm:[&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-indigo-900 [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h4]:text-base [&_h4]:font-semibold [&_h4]:text-gray-800 [&_h4]:mt-2 [&_h4]:mb-1 [&_p]:my-2 [&_p]:leading-relaxed [&_li]:ml-5 [&_li]:list-disc [&_li]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-indigo-50/70 [&_blockquote]:rounded-r-xl [&_blockquote]:px-3.5 [&_blockquote]:py-2.5 [&_blockquote]:my-2.5 [&_blockquote]:italic [&_hr]:my-4 [&_hr]:border-gray-200"
           />
 
           {selectionToolbar.visible && (

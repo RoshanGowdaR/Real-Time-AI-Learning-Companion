@@ -27,11 +27,11 @@ export const apiService = {
   },
 
   // Chat
-  sendMessage: async (studentId, question) => {
+  sendMessage: async (studentId, question, emotion = null) => {
     const res = await fetch(`${API_BASE}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ student_id: studentId, question }),
+      body: JSON.stringify({ student_id: studentId, question, emotion }),
     });
     if (!res.ok) throw new Error("Chat failed");
     return res.json();

@@ -1,0 +1,33 @@
+# Large model files (>100MB exceeds GitHub push limits)
+*.pkl
+models/*.pkl
+
+# SQLite local databases
+*.db
+studybuddy-backend/data/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+ENV/
+
+# Node
+node_modules/
+dist/
+build/
+.npm
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Vectorstore & Upload caches
+studybuddy-backend/uploads/*
+!studybuddy-backend/uploads/.gitkeep
+studybuddy-backend/vectorstore/*
+!studybuddy-backend/vectorstore/.gitkeep

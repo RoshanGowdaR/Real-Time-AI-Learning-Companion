@@ -212,6 +212,7 @@ async def register_org_admin(req: OrgAdminRegisterRequest):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"register_teacher failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

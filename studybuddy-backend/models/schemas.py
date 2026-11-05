@@ -8,6 +8,21 @@ class ChatRequest(BaseModel):
     source: str = "text"
     client_local_date: str | None = None
     client_local_time: str | None = None
+    emotion: str | None = None
+    conversation_history: list[dict] | None = None
+    active_notes: str | None = None
+    document_name: str | None = None
+    selected_source_ids: list[str] | None = None
+
+
+class FeedbackRequest(BaseModel):
+    student_id: str | None = None
+    rating: int = 5
+    feedback: str = ""
+    intent: str | None = None
+    emotion: str | None = None
+    response_depth: str | None = None
+
 
 
 class ChatResponse(BaseModel):
@@ -16,7 +31,7 @@ class ChatResponse(BaseModel):
 
 
 class NotesRequest(BaseModel):
-    student_id: str
+    student_id: str | None = None
     document_id: str | None = None
     filename: str | None = None
     query: str | None = None
