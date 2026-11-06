@@ -836,7 +836,7 @@ export default function MainApp() {
   useEffect(() => {
     setAutoCameraOffCallback((reason) => {
       handleStopFaceDetection()
-      setFaceDetectionError(reason || 'Camera automatically turned off after 3s of inactivity.')
+      setFaceDetectionError(reason || 'Camera automatically turned off after 10s of inactivity.')
       setTimeout(() => setFaceDetectionError(''), 4500)
     })
   }, [handleStopFaceDetection])

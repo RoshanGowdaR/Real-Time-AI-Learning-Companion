@@ -6,6 +6,7 @@ let detectionInFlight = false
 let activeStream = null
 let noFaceStartTime = null
 let autoCameraOffCallback = null
+const INACTIVITY_TIMEOUT_MS = 10000 // 10 seconds of inactivity before auto-off
 
 export function setAutoCameraOffCallback(cb) {
   autoCameraOffCallback = cb
@@ -132,15 +133,15 @@ export async function captureAndAnalyze(studentId, onEmotionDetected, videoRef) 
 
     const data = await api.analyzeEmotion(blob, studentId)
 
-    // Check for inactive camera (no face detected for 3 seconds)
+    // Check for inactive camera (no face detected for 10 seconds)
     if (data.emotion === 'no_face' || !data.emotion) {
       if (!noFaceStartTime) {
         noFaceStartTime = Date.now()
-      } else if (Date.now() - noFaceStartTime >= 3000) {
-        console.warn('[FaceDetection] Inactivity detected for 3 seconds (no face). Automatically shutting off camera.')
+      } else if (Date.now() - noFaceStartTime >= INACTIVITY_TIMEOUT_MS) {
+        console.warn('[FaceDetection] Inactivity detected for 10 seconds (no face). Automatically shutting off camera.')
         stopAllCameraStreams()
         if (typeof autoCameraOffCallback === 'function') {
-          autoCameraOffCallback('Camera turned off automatically after 3 seconds of inactivity.')
+          autoCameraOffCallback('Camera turned off automatically after 10 seconds of inactivity.')
         }
         if (typeof onEmotionDetected === 'function') {
           onEmotionDetected('no_face', 0)
@@ -159,11 +160,11 @@ export async function captureAndAnalyze(studentId, onEmotionDetected, videoRef) 
     console.error('Emotion analyze request failed', err)
     if (!noFaceStartTime) {
       noFaceStartTime = Date.now()
-    } else if (Date.now() - noFaceStartTime >= 3000) {
-      console.warn('[FaceDetection] Inactivity/error for 3s. Automatically turning off camera.')
+    } else if (Date.now() - noFaceStartTime >= INACTIVITY_TIMEOUT_MS) {
+      console.warn('[FaceDetection] Inactivity/error for 10s. Automatically turning off camera.')
       stopAllCameraStreams()
       if (typeof autoCameraOffCallback === 'function') {
-        autoCameraOffCallback('Camera turned off automatically after 3 seconds of inactivity.')
+        autoCameraOffCallback('Camera turned off automatically after 10 seconds of inactivity.')
       }
       return
     }
