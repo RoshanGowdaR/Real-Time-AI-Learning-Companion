@@ -929,6 +929,20 @@ export default function WorkspaceView({
                           <div className="text-xs sm:text-sm text-gray-200 leading-relaxed">
                             <FormattedMessage content={message.content} />
                           </div>
+                          {message.content?.includes('Would you like me to find and explain the answer from the web for you?') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (typeof onChat === 'function') {
+                                  onChat('yes, find and explain the answer from the web')
+                                }
+                              }}
+                              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 text-indigo-200 text-xs font-medium transition-all hover:scale-[1.02] cursor-pointer"
+                            >
+                              <span>🌐</span>
+                              <span>Yes, search web</span>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

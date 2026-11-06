@@ -4,6 +4,12 @@ let detectionInterval = null
 let registeredVideoRef = null
 let detectionInFlight = false
 let activeStream = null
+let noFaceStartTime = null
+let autoCameraOffCallback = null
+
+export function setAutoCameraOffCallback(cb) {
+  autoCameraOffCallback = cb
+}
 
 export function setFaceDetectionVideoRef(videoRef) {
   registeredVideoRef = videoRef
@@ -23,6 +29,7 @@ function clearDetectionInterval() {
 export function stopAllCameraStreams() {
   clearDetectionInterval()
   detectionInFlight = false
+  noFaceStartTime = null
 
   if (activeStream) {
     try {
@@ -84,6 +91,7 @@ export async function startFaceDetection(studentId, onEmotionDetected, videoRef)
 
   clearDetectionInterval()
   detectionInFlight = false
+  noFaceStartTime = null
 
   await captureAndAnalyze(studentId, onEmotionDetected, videoRef)
 
@@ -93,7 +101,7 @@ export async function startFaceDetection(studentId, onEmotionDetected, videoRef)
     captureAndAnalyze(studentId, onEmotionDetected, videoRef).catch((err) => {
       console.error('Face detection capture failed', err)
     })
-  }, 4000)
+  }, 1000)
 
   return stream
 }
@@ -123,11 +131,42 @@ export async function captureAndAnalyze(studentId, onEmotionDetected, videoRef) 
     if (!blob) return
 
     const data = await api.analyzeEmotion(blob, studentId)
+
+    // Check for inactive camera (no face detected for 3 seconds)
+    if (data.emotion === 'no_face' || !data.emotion) {
+      if (!noFaceStartTime) {
+        noFaceStartTime = Date.now()
+      } else if (Date.now() - noFaceStartTime >= 3000) {
+        console.warn('[FaceDetection] Inactivity detected for 3 seconds (no face). Automatically shutting off camera.')
+        stopAllCameraStreams()
+        if (typeof autoCameraOffCallback === 'function') {
+          autoCameraOffCallback('Camera turned off automatically after 3 seconds of inactivity.')
+        }
+        if (typeof onEmotionDetected === 'function') {
+          onEmotionDetected('no_face', 0)
+        }
+        return
+      }
+    } else {
+      // User face is actively present
+      noFaceStartTime = null
+    }
+
     if (typeof onEmotionDetected === 'function') {
       onEmotionDetected(data.emotion, data.confidence)
     }
   } catch (err) {
     console.error('Emotion analyze request failed', err)
+    if (!noFaceStartTime) {
+      noFaceStartTime = Date.now()
+    } else if (Date.now() - noFaceStartTime >= 3000) {
+      console.warn('[FaceDetection] Inactivity/error for 3s. Automatically turning off camera.')
+      stopAllCameraStreams()
+      if (typeof autoCameraOffCallback === 'function') {
+        autoCameraOffCallback('Camera turned off automatically after 3 seconds of inactivity.')
+      }
+      return
+    }
     if (typeof onEmotionDetected === 'function') {
       onEmotionDetected('no_face', 0)
     }

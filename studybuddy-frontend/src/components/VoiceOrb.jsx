@@ -127,6 +127,9 @@ export default function VoiceOrb({
   currentEmotion,
   recentMessages = [],
   onScheduleCreated,
+  activeNotes = null,
+  documentName = null,
+  selectedSourceIds = null,
 }) {
   const WAVE_BARS = [8, 14, 22, 16, 10, 18, 26, 20, 12, 18, 24, 17, 9]
   const [isRecording, setIsRecording] = useState(false)
@@ -373,7 +376,10 @@ function cleanTextForSpeech(text) {
         question,
         'voice',
         currentEmotion,
-        formattedHistory
+        formattedHistory,
+        activeNotes,
+        documentName,
+        selectedSourceIds
       )
 
       // Emit answer to UI (updates text chat messages & talk history)

@@ -9,7 +9,7 @@ import OrganizationsView from '../components/OrganizationsView'
 import VoiceOrb from '../components/VoiceOrb'
 import FaceDetectionPip from '../components/FaceDetectionPip'
 import FeedbackModal from '../components/FeedbackModal'
-import { startFaceDetection, stopFaceDetection, stopAllCameraStreams } from '../utils/faceDetection'
+import { startFaceDetection, stopFaceDetection, stopAllCameraStreams, setAutoCameraOffCallback } from '../utils/faceDetection'
 import { getEmotionResponse } from '../utils/emotionReactions'
 import { api } from '../services/api'
 
@@ -834,6 +834,14 @@ export default function MainApp() {
   }, [])
 
   useEffect(() => {
+    setAutoCameraOffCallback((reason) => {
+      handleStopFaceDetection()
+      setFaceDetectionError(reason || 'Camera automatically turned off after 3s of inactivity.')
+      setTimeout(() => setFaceDetectionError(''), 4500)
+    })
+  }, [handleStopFaceDetection])
+
+  useEffect(() => {
     if (!isWorkspaceTab || !student.id) return
     let isCameraExplicitlyOff = false
     try {
@@ -1139,6 +1147,9 @@ export default function MainApp() {
           speakText={speakText}
           currentEmotion={currentEmotion}
           recentMessages={chatMessages}
+          activeNotes={activeNotes}
+          documentName={activeTitle}
+          selectedSourceIds={activeWorkspaceDocumentIds}
         />
       )}
 

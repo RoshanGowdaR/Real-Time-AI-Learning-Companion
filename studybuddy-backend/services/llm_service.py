@@ -304,21 +304,34 @@ def generate_notes(text: str) -> str:
 
 def answer_question(
     question: str,
-    context: str,
+    context: str = "",
     student_id: Optional[str] = None,
     emotion: Optional[str] = None,
     conversation_history: Optional[list] = None,
     intent: Optional[str] = None,
     pdf_mode: bool = False,
+    web_mode: bool = False,
+    has_uploaded_resources: bool = False,
+    pending_web_question: Optional[str] = None,
+    is_isolated_affirmative: bool = False,
 ) -> str:
     """Answer student questions adapting to detected emotion, RF predicted intent, and Find-S hypothesis.
     
-    Includes recent conversation history so the LLM remembers prior exchanges.
-    When pdf_mode=True, forces strict PDF extraction + simple explanation format.
+    Includes conversational memory: remembers past exchanges and web permission flows.
+    When a topic is not in the uploaded documents, cautions the student and asks for permission to search the web.
     """
+    normalized_emotion = str(emotion or "").strip().lower()
+
+    # 1. Handle isolated affirmative ("yes" / "sure" with no context)
+    if is_isolated_affirmative:
+        if normalized_emotion in ("frustrated", "angry", "distressed"):
+            return "I hear you, and I'm right here with you! What do you mean by yes? Could you clarify what topic or question you'd like me to help you with?"
+        elif normalized_emotion in ("confused", "surprise"):
+            return "What do you mean by yes? Could you clarify what question or topic you'd like us to look into?"
+        return "What do you mean by yes? Could you clarify what you'd like me to help you with?"
+
     # Emotion adaptation instructions
     emotion_instruction = ""
-    normalized_emotion = str(emotion or "").strip().lower()
     if normalized_emotion in ("confused", "surprise", "surprised"):
         emotion_instruction = (
             "\n[ACTIVE EMOTION DETECTED: CONFUSED / SURPRISED 😕]\n"
@@ -335,8 +348,8 @@ def answer_question(
     elif normalized_emotion in ("angry", "distressed", "frustrated"):
         emotion_instruction = (
             "\n[ACTIVE EMOTION DETECTED: FRUSTRATED / OVERWHELMED 😠]\n"
-            "- The student appears frustrated. Validate that this topic is genuinely tricky.\n"
-            "- Slow down the pace, remove unnecessary jargon, and offer a calm, friendly step-by-step breakdown."
+            "- The student appears frustrated or stressed. Validate that this topic is genuinely tricky.\n"
+            "- Slow down the pace, remove unnecessary jargon, and offer a calm, friendly, reassuring step-by-step breakdown."
         )
     elif normalized_emotion in ("fear", "anxious", "fearful"):
         emotion_instruction = (
@@ -429,58 +442,75 @@ def answer_question(
         except Exception as e:
             print(f"[VersionSpace] Error fetching hypothesis: {e}")
 
-    # PDF mode specific instructions
-    pdf_mode_instruction = ""
-    if pdf_mode:
+    # Determine question and format based on mode
+    effective_question = pending_web_question if (web_mode and pending_web_question) else question
+
+    if web_mode:
+        mode_instruction = (
+            f"\n[🌐 WEB SEARCH MODE ACTIVATED — Student granted permission to search the web for: '{effective_question}']\n"
+            "You MUST format your entire response using EXACTLY these two markdown sections:\n"
+            "### 🌐 Answer from Web Search\n"
+            "(Provide a comprehensive, accurate, and helpful explanation gathered from web search / academic knowledge.)\n\n"
+            "### 💡 In Simple Words\n"
+            "(Explain the concept in simple, accessible terms using everyday analogies tailored to the student's current emotion.)\n\n"
+            "CRITICAL: You MUST use BOTH sections above."
+        )
+    elif has_uploaded_resources:
+        mode_instruction = (
+            "\n[📄 UPLOADED PDF / WORKSPACE RESOURCES MODE]\n"
+            "The student has uploaded documents/notes in their workspace.\n"
+            "Carefully examine the 'Uploaded PDF Context' below:\n"
+            "1. IF THE TOPIC OF THE QUESTION IS COVERED / PRESENT IN THE 'Uploaded PDF Context':\n"
+            "   You MUST format your response using EXACTLY these two sections:\n"
+            "   ### 📄 Answer from Uploaded PDF\n"
+            "   (Direct, factual definitions and answers extracted directly from the uploaded material.)\n\n"
+            "   ### 💡 In Simple Words\n"
+            "   (Clear, simple breakdown using everyday analogies adapted to the student's emotion.)\n\n"
+            "2. IF THE TOPIC OF THE QUESTION IS NOT PRESENT IN THE 'Uploaded PDF Context' "
+            "(e.g., asking about sugar tea, unrelated subjects, or concepts absent from their documents):\n"
+            "   You MUST NOT provide the answer immediately from external knowledge.\n"
+            "   Instead, you MUST respond EXACTLY with this caution and question:\n"
+            "   ⚠️ **This is not from the uploaded PDF/notes.**\n\n"
+            "   Would you like me to find and explain the answer from the web for you?\n\n"
+            "   CRITICAL: Do NOT answer the question yet. Output only the caution and permission question above!\n"
+        )
+    elif pdf_mode:
         if context.strip():
-            pdf_mode_instruction = (
+            mode_instruction = (
                 "\n[🔒 PDF-ONLY MODE ACTIVATED — The student EXPLICITLY requested answers from their uploaded PDF]\n"
                 "You MUST follow this format EXACTLY:\n"
                 "### 📄 Answer from Uploaded PDF\n"
-                "(Extract the EXACT relevant information, definitions, facts, and details directly from the Uploaded PDF Context below. "
-                "Quote or closely paraphrase the PDF content. Do NOT add outside knowledge in this section.)\n\n"
+                "(Extract the EXACT relevant information directly from the Uploaded PDF Context below.)\n\n"
                 "### 💡 In Simple Words\n"
-                "(Now explain the above PDF answer in simple, crystal-clear everyday language. Use intuitive analogies and "
-                "accessible wording so the student grasps the concept easily.)\n\n"
-                "CRITICAL: You MUST use BOTH sections above. First give the PDF answer, then the simple explanation.\n"
+                "(Now explain the above PDF answer in simple, crystal-clear everyday language.)\n"
             )
         else:
-            pdf_mode_instruction = (
+            mode_instruction = (
                 "\n[⚠️ PDF MODE REQUESTED BUT NO PDF CONTEXT FOUND]\n"
                 "The student asked for answers from their uploaded PDF, but no matching content was found in their uploaded documents.\n"
-                "You MUST start your response with: '⚠️ **This topic was not found in your uploaded PDF.**'\n"
-                "Then provide a helpful, clear explanation using your tutor knowledge.\n"
+                "You MUST respond with:\n"
+                "⚠️ **This is not from the uploaded PDF/notes.**\n\n"
+                "Would you like me to find and explain the answer from the web for you?\n"
             )
+    else:
+        mode_instruction = (
+            "\n[GENERAL STUDY TUTOR MODE]\n"
+            "Provide a clear, engaging explanation using Markdown subheadings and bullet points.\n"
+        )
 
     system = (
         "You are Sensei — a warm, highly conversational AI study tutor for students.\n\n"
         "CORE RULES:\n"
         "1. CONVERSATION CONTEXT IS PARAMOUNT: You MUST pay close attention to the CONVERSATION HISTORY below. "
-        "The student may refer back to previous messages (e.g., 'yes', 'tell me in general', 'explain that further', "
-        "'what about trees?', etc.). Always infer what they mean from the prior exchanges and continue seamlessly.\n"
-        "2. NEVER STALL OR ASK PERMISSION: If there is no uploaded PDF context (context is empty), NEVER ask "
-        "'Do you want me to explain this in general or upload a PDF?'. IMMEDIATELY explain the topic using your rich, "
-        "expert academic knowledge clearly and directly!\n"
-        "3. NEVER REPEAT QUESTIONS: If the student answered 'yes' or 'tell me in general', provide the explanation "
-        "straight away. DO NOT ask which topic they need again.\n"
-        "4. RAG & UPLOADED RESOURCE RULES (STRICT & MANDATORY):\n"
-        "   - Whenever uploaded PDF context is provided, OR whenever the student asks questions asking for answers "
-        "'according to the pdf', 'from the pdf', 'from the notes', or 'using uploaded resources':\n"
-        "     * FIRST: Extract the direct, accurate answer/definition directly from the uploaded PDF text:\n"
-        "       ### 📄 Answer from Uploaded PDF\n"
-        "       (Accurate facts, definitions, and details extracted directly from the uploaded material)\n"
-        "     * SECOND: Immediately explain that answer in simple, crystal-clear words:\n"
-        "       ### 💡 In Simple Words\n"
-        "       (Clear, simple breakdown using everyday analogies and accessible language so the student grasps the intuition easily)\n"
-        "   - If the student specifies 'just use the pdf to give answers' or 'only use the pdf':\n"
-        "     * Strictly restrict the factual answer to only what is present in the Uploaded PDF Context. Do not introduce outside concepts.\n"
-        "   - If the student specifically asks for answers from the PDF, but no PDF context is provided (or the topic is not in the uploaded document):\n"
-        "     * Clearly inform them: 'This topic was not found in your uploaded PDF.' and then provide a clear, helpful explanation using your tutor knowledge.\n"
-        "5. For EXAM prep questions (e.g., 'what to focus on for 5 marks'), give specific, practical advice with high-yield concepts.\n"
-        "6. Always format output beautifully using Markdown: use '### Subheadings', bold '**key terms**', bullet points, and code blocks for code/syntax.\n"
-        "7. Always end with an encouraging line.\n"
-        "8. Keep responses concise and focused (under 250 words unless asked for detailed notes or comprehensive explanations).\n"
-        f"{pdf_mode_instruction}\n"
+        "The student may refer back to previous messages (e.g., 'yes', 'explain that further', 'what about that?'). "
+        "Always infer what they mean from the prior exchanges and continue seamlessly.\n"
+        "2. RESPECT UPLOADED PDF BOUNDARIES: When resources are uploaded, strictly check if the question topic "
+        "is present in the Uploaded PDF Context. If absent, caution the student and ask if they want answers from the web.\n"
+        "3. EMOTION ADAPTATION: Actively adapt your tone, empathy, pacing, and encouragement to the student's detected emotion.\n"
+        "4. Always format output beautifully using Markdown: use '### Subheadings', bold '**key terms**', and bullet points.\n"
+        "5. Always end with an encouraging remark.\n"
+        "6. Keep responses concise and focused (under 250 words unless detailed depth was requested).\n"
+        f"{mode_instruction}\n"
         f"{emotion_instruction}\n"
         f"{intent_instruction}\n"
         f"{find_s_instruction}\n"
@@ -491,22 +521,19 @@ def answer_question(
     # Build multi-turn messages: system → conversation history → current question
     messages = [("system", system)]
 
-    # Inject conversation history as alternating human/ai turns
     if conversation_history:
-        # Cap to last few exchanges to stay within Groq's strict token limits
         capped_history = conversation_history[-_MAX_HISTORY_MESSAGES:]
         for entry in capped_history:
             role = entry.get("role", "user")
-            content = entry.get("content", "")
-            if not content:
+            msg_text = entry.get("content", "")
+            if not msg_text:
                 continue
-            if role == "user":
-                messages.append(("human", content))
+            if role in ("user", "student"):
+                messages.append(("human", msg_text))
             elif role == "assistant":
-                messages.append(("ai", content))
+                messages.append(("ai", msg_text))
 
-    # Add the current question
-    messages.append(("human", question))
+    messages.append(("human", effective_question))
     return _safe_invoke(messages)
 
 

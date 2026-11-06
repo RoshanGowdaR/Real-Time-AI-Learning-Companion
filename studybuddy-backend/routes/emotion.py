@@ -148,11 +148,8 @@ async def analyze_emotion(
             y2 = min(h, fy + fh + margin_y)
             target_roi = img_array[y1:y2, x1:x2]
         else:
-            # Check if frame is virtually black/empty
-            if np.mean(gray) < 12 or np.std(gray) < 8:
-                return await _build_response(student_id, "no_face", 0, "ok")
-            # If user is in front of webcam, take centered region
-            target_roi = img_array[int(h * 0.1) : int(h * 0.9), int(w * 0.15) : int(w * 0.85)]
+            # No face detected in frame (user is away, camera covered, or inactive)
+            return await _build_response(student_id, "no_face", 0.0, "ok")
 
         # 2. Run user's trained emotion_model.pkl + label_encoder.pkl
         try:
